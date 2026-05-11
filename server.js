@@ -61,7 +61,13 @@ function slimDeal(d) {
 }
 
 // ── MIDDLEWARE ───────────────────────────────────────────
-app.use(cors());
+app.use(cors({
+  origin: [
+    'https://aitorams.github.io',
+    'http://localhost',
+    'http://127.0.0.1',
+  ]
+}));
 app.use(express.json());
 
 // ── CACHE STATE ───────────────────────────────────────────
