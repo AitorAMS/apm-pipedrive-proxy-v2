@@ -1,0 +1,1376 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>InPost Spain — Network KPI Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Saira:wght@900&family=Archivo:wght@400;500;600;700;900&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --yellow:#FFCC05;--black:#1D1D1D;--white:#FEFEFE;--off-white:#F6F6F6;
+  --purple:#C326F9;--blue:#1773F9;--green:#00D46B;--magenta:#FA1DBB;--orange:#FD5F2E;
+  --font-display:'Saira','Arial Black',sans-serif;
+  --font-body:'Archivo','Segoe UI',Arial,sans-serif;
+  --radius:8px;--radius-sm:4px;
+  --border:#E0DDD6;--muted:#888780;--danger:#E24B4A;--warn:#F0B429;--ok:#00D46B;
+}
+html,body{height:100%;font-family:var(--font-body);background:var(--off-white);color:var(--black);font-size:13px}
+.shell{display:flex;height:100vh;overflow:hidden}
+
+/* SIDEBAR */
+.sidebar{width:66px;background:var(--black);display:flex;flex-direction:column;align-items:center;flex-shrink:0}
+.logo-bar{width:100%;background:var(--yellow);padding:10px 0 8px;display:flex;justify-content:center;align-items:center}
+.nav-items{display:flex;flex-direction:column;gap:1px;padding:6px 5px;width:100%;flex:1}
+.nav-item{display:flex;flex-direction:column;align-items:center;gap:3px;padding:10px 4px;border-radius:var(--radius-sm);cursor:pointer;border:none;background:transparent;width:100%;transition:background .1s}
+.nav-item:hover{background:rgba(255,204,5,.1)}
+.nav-item.active{background:rgba(255,204,5,.2);border-left:3px solid var(--yellow)}
+.nav-icon{font-size:15px;line-height:1}
+.nav-lbl{font-size:8px;font-weight:700;color:#777;text-transform:uppercase;letter-spacing:.06em;text-align:center;line-height:1.2}
+.nav-item.active .nav-lbl{color:var(--yellow)}
+
+/* MAIN */
+.main{flex:1;overflow:hidden;display:flex;flex-direction:column;min-width:0}
+.topbar{height:46px;background:var(--black);display:flex;align-items:center;padding:0 18px;flex-shrink:0;gap:10px;border-bottom:3px solid var(--yellow)}
+.page-title{font-family:var(--font-display);font-size:15px;font-weight:900;text-transform:uppercase;color:var(--white);letter-spacing:.03em}
+.tag-live{font-size:9px;font-weight:700;padding:2px 8px;border-radius:20px;background:#333;color:#666;text-transform:uppercase;letter-spacing:.05em;transition:all .3s}
+.tag-live.on{background:var(--yellow);color:var(--black)}
+.topbar-right{margin-left:auto;display:flex;align-items:center;gap:8px}
+.mode-btns{display:flex;gap:2px;background:#333;border-radius:var(--radius-sm);padding:2px}
+.mbtn{border:none;background:transparent;border-radius:3px;padding:3px 11px;cursor:pointer;font-size:11px;color:#aaa;font-weight:600;transition:all .1s}
+.mbtn.active{background:var(--yellow);color:var(--black)}
+.week-nav{display:flex;align-items:center;gap:5px}
+.wbtn{border:1px solid #444;background:transparent;border-radius:var(--radius-sm);padding:4px 10px;cursor:pointer;font-size:12px;color:var(--white);transition:all .1s}
+.wbtn:hover{background:var(--yellow);color:var(--black);border-color:var(--yellow)}
+.wbtn:disabled{opacity:.3;cursor:default}
+.wpill{font-size:11px;font-weight:700;color:var(--black);background:var(--yellow);border-radius:var(--radius-sm);padding:4px 14px;min-width:130px;text-align:center}
+
+/* CONTENT */
+.content{flex:1;overflow-y:auto;padding:14px 18px}
+.content::-webkit-scrollbar{width:4px}
+.content::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+.page{display:none}.page.active{display:block}
+
+/* CONNECT BANNER */
+.conn-banner{background:var(--white);border:1.5px solid var(--yellow);border-radius:var(--radius);padding:12px 16px;margin-bottom:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.conn-banner.connected{border-color:var(--ok);background:#f0fff8}
+.ci{border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 10px;font-size:12px;font-family:var(--font-body);outline:none}
+.ci:focus{border-color:var(--yellow)}
+.cb{background:var(--yellow);color:var(--black);border:none;border-radius:var(--radius-sm);padding:7px 16px;font-size:12px;font-weight:700;font-family:var(--font-body);cursor:pointer;text-transform:uppercase;letter-spacing:.04em}
+.cb:hover{opacity:.85}
+.lbar-wrap{display:none;align-items:center;gap:8px}
+.lbar-wrap.show{display:flex}
+.lbar{height:4px;background:#eee;border-radius:2px;overflow:hidden;width:160px}
+.lf{height:100%;background:var(--yellow);border-radius:2px;transition:width .3s}
+.ltx{font-size:10px;color:var(--muted)}
+
+/* SECTION LABEL */
+.slbl{font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:8px;margin-top:14px;display:flex;align-items:center;gap:6px}
+.slbl::before{content:'';width:3px;height:10px;background:var(--yellow);border-radius:2px;flex-shrink:0}
+.slbl:first-child{margin-top:0}
+
+/* SECTION STRIP */
+.sec-strip{background:var(--black);border-radius:var(--radius);padding:8px 14px;margin-bottom:10px;display:flex;align-items:center;gap:10px}
+.sec-strip-title{font-family:var(--font-display);font-size:14px;font-weight:900;color:var(--white);text-transform:uppercase;letter-spacing:.04em}
+.sec-strip-badge{background:var(--yellow);color:var(--black);font-size:9px;font-weight:700;padding:2px 8px;border-radius:20px;text-transform:uppercase;letter-spacing:.04em}
+
+/* KPI CARDS */
+.krow{display:grid;gap:8px;margin-bottom:10px}
+.k4{grid-template-columns:repeat(4,1fr)}
+.k5{grid-template-columns:repeat(5,1fr)}
+.k6{grid-template-columns:repeat(6,1fr)}
+.kc{background:var(--white);border:1px solid var(--border);border-radius:var(--radius);padding:11px 13px;position:relative;overflow:hidden}
+.kc-accent{position:absolute;top:0;left:0;width:100%;height:3px;border-radius:var(--radius) var(--radius) 0 0}
+.kc-lbl{font-size:9px;color:var(--muted);margin-bottom:4px;font-weight:700;text-transform:uppercase;letter-spacing:.05em}
+.kc-val{font-size:24px;font-weight:900;line-height:1;letter-spacing:-.5px;margin-bottom:4px}
+.kc-sub{font-size:10px;color:var(--muted)}
+.pmini{margin-top:5px}
+.pmini-row{display:flex;justify-content:space-between;font-size:9px;color:var(--muted);margin-bottom:2px}
+.pmini-track{height:3px;background:#eee;border-radius:2px;overflow:hidden}
+.pmini-fill{height:3px;border-radius:2px;transition:width .4s}
+
+/* PANELS */
+.panel{background:var(--white);border:1px solid var(--border);border-radius:var(--radius);padding:13px 15px}
+.ph{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--border)}
+.pt{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em}
+.ps{font-size:10px;color:var(--muted)}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:10px}
+
+/* TABLE PANEL */
+.tbl-panel{padding:0;overflow:hidden}
+.tbl-hdr{padding:8px 14px;background:var(--off-white);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.tbl-hdr-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+table.tbl{width:100%;border-collapse:collapse}
+table.tbl thead th{padding:5px 10px;font-size:9px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.05em;text-align:right;border-bottom:1.5px solid var(--border);white-space:nowrap;background:var(--off-white)}
+table.tbl thead th:first-child{text-align:left}
+table.tbl tbody tr{border-bottom:0.5px solid #f0ede6}
+table.tbl tbody tr:last-child{border-bottom:none}
+table.tbl tbody tr:hover{background:#fafaf8}
+table.tbl td{padding:5px 10px;text-align:right;font-size:11px;white-space:nowrap}
+table.tbl td:first-child{text-align:left;font-weight:600}
+
+/* BADGE */
+.badge{display:inline-block;padding:2px 7px;border-radius:100px;font-size:9px;font-weight:700;letter-spacing:.03em;text-transform:uppercase}
+.b-ok{background:#d1fae5;color:#065f46}
+.b-warn{background:#fef3c7;color:#92400e}
+.b-bad{background:#fee2e2;color:#7f1d1d}
+.b-gray{background:#f1f0ec;color:#555}
+.b-yellow{background:var(--yellow);color:var(--black)}
+.b-blue{background:#dbeafe;color:#1e40af}
+.b-purple{background:#ede9fe;color:#5b21b6}
+
+/* FUNNEL */
+.frow{display:flex;align-items:center;gap:10px;margin-bottom:7px}
+.fname{font-size:11px;font-weight:600;width:130px;flex-shrink:0}
+.ftrack{flex:1;height:7px;background:#eee;border-radius:4px;overflow:hidden}
+.fbar{height:7px;border-radius:4px;transition:width .4s}
+.fnum{font-size:12px;font-weight:700;width:40px;text-align:right;flex-shrink:0}
+.fpct{font-size:10px;color:var(--muted);width:36px;text-align:right;flex-shrink:0}
+
+/* CHART WRAP */
+.chart-h150{position:relative;height:150px}
+.chart-h200{position:relative;height:200px}
+
+/* TARGET COMPARE BARS */
+.tgt-row{display:flex;align-items:flex-start;gap:10px;margin-bottom:10px;padding-bottom:10px;border-bottom:0.5px solid var(--border)}
+.tgt-row:last-child{border-bottom:none;margin-bottom:0;padding-bottom:0}
+.tgt-lbl{font-size:11px;font-weight:700;width:90px;flex-shrink:0;padding-top:2px}
+.tgt-bars{flex:1;display:flex;flex-direction:column;gap:4px}
+.tgt-bar-row{display:flex;align-items:center;gap:6px}
+.tgt-bar-lbl{font-size:9px;color:var(--muted);width:56px;flex-shrink:0;text-align:right;font-weight:600}
+.tgt-bar-track{flex:1;height:5px;background:#eee;border-radius:3px;overflow:hidden}
+.tgt-bar-fill{height:5px;border-radius:3px;transition:width .4s}
+.tgt-bar-num{font-size:10px;font-weight:700;width:60px;text-align:right;flex-shrink:0}
+
+/* PIPE DIST */
+.pdrow{display:flex;align-items:center;gap:8px;margin-bottom:7px}
+.pdlbl{font-size:11px;width:130px;flex-shrink:0}
+.pdtrack{flex:1;height:7px;background:#eee;border-radius:4px;overflow:hidden}
+.pdfill{height:7px;border-radius:4px}
+.pdnum{font-size:11px;font-weight:700;width:32px;text-align:right;flex-shrink:0}
+
+/* TIME CARD */
+.time-block{background:var(--off-white);border-radius:var(--radius-sm);padding:12px 14px;text-align:center;border:1px solid var(--border)}
+.time-lbl{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:5px}
+.time-val{font-size:28px;font-weight:900;line-height:1}
+.time-unit{font-size:10px;color:var(--muted);margin-top:3px}
+
+/* STATUS BAR */
+.status-bar{height:26px;background:var(--black);display:flex;align-items:center;padding:0 18px;gap:10px;flex-shrink:0}
+.sdot{width:6px;height:6px;border-radius:50%;background:#333}
+.sdot.on{background:var(--yellow)}
+.stxt{font-size:9px;color:#666;letter-spacing:.04em;text-transform:uppercase}
+.stxt span{color:var(--yellow)}
+
+/* ERR */
+#conn-err{color:var(--danger);font-size:11px;display:none}
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+    <div class="logo-bar">
+      <svg viewBox="0 0 40 18" height="20" xmlns="http://www.w3.org/2000/svg">
+        <rect width="40" height="18" fill="#FFCC05"/>
+        <text x="2" y="13" font-family="Arial Black,sans-serif" font-size="10" font-weight="900" fill="#1D1D1D">InPost</text>
+      </svg>
+    </div>
+    <div class="nav-items">
+      <button class="nav-item active" onclick="setPage('overview')">
+        <span class="nav-icon">📊</span><span class="nav-lbl">Overview</span>
+      </button>
+      <button class="nav-item" onclick="setPage('survey')">
+        <span class="nav-icon">🔍</span><span class="nav-lbl">Survey</span>
+      </button>
+      <button class="nav-item" onclick="setPage('approval')">
+        <span class="nav-icon">👤</span><span class="nav-lbl">Account</span>
+      </button>
+      <button class="nav-item" onclick="setPage('eg')">
+        <span class="nav-icon">⚡</span><span class="nav-lbl">E&amp;G</span>
+      </button>
+      <button class="nav-item" onclick="setPage('install')">
+        <span class="nav-icon">📦</span><span class="nav-lbl">Install</span>
+      </button>
+      <button class="nav-item" onclick="setPage('timings')">
+        <span class="nav-icon">⏱️</span><span class="nav-lbl">Timings</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="main">
+    <div class="topbar">
+      <div class="page-title">Network KPI Dashboard</div>
+      <span class="tag-live" id="live-tag">Offline</span>
+      <div class="topbar-right">
+        <div class="mode-btns">
+          <button class="mbtn active" id="btn-w" onclick="setMode('w')">Semana</button>
+          <button class="mbtn" id="btn-m" onclick="setMode('m')">Mes</button>
+        </div>
+        <div class="week-nav">
+          <button class="wbtn" id="gb-p" onclick="goPrev()">◀</button>
+          <span class="wpill" id="gb-lbl">–</span>
+          <button class="wbtn" id="gb-n" onclick="goNext()">▶</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="content">
+
+      <!-- SYNC STATUS BANNER -->
+      <div class="conn-banner" id="conn-banner">
+        <span style="font-size:12px;font-weight:700">📡 InPost Spain · Live Cache</span>
+        <div class="lbar-wrap show" id="lbar-wrap">
+          <div class="lbar"><div class="lf" id="lf" style="width:0"></div></div>
+          <span class="ltx" id="ltx">Cargando datos…</span>
+        </div>
+        <span id="conn-err" style="display:none;color:var(--danger);font-size:11px"></span>
+        <span id="sync-info" style="font-size:11px;color:var(--muted);display:none"></span>
+        <button class="cb" id="refresh-btn" onclick="forceRefresh()" style="display:none;margin-left:auto">↺ Sync ahora</button>
+      </div>
+
+      <!-- ── OVERVIEW ─────────────────────────────────── -->
+      <div class="page active" id="page-overview">
+        <div class="sec-strip">
+          <span class="sec-strip-title">Completed vs Target</span>
+          <span class="sec-strip-badge" id="ov-badge">–</span>
+        </div>
+        <div class="krow k4" id="ov-kpis"></div>
+        <div class="g2">
+          <div class="panel">
+            <div class="ph"><span class="pt">Survey Completed vs Target</span><span class="ps" id="ov-sv-ps">semanas 2026</span></div>
+            <div class="chart-h150"><canvas id="ch-ov-sv"></canvas></div>
+          </div>
+          <div class="panel">
+            <div class="ph"><span class="pt">Installation vs Target</span><span class="ps">semanas 2026</span></div>
+            <div class="chart-h150"><canvas id="ch-ov-in"></canvas></div>
+          </div>
+        </div>
+        <div class="g2">
+          <div class="panel">
+            <div class="ph"><span class="pt">E&amp;G vs Target</span><span class="ps">semanas 2026</span></div>
+            <div class="chart-h150"><canvas id="ch-ov-eg"></canvas></div>
+          </div>
+          <div class="panel tbl-panel" style="padding:0">
+            <div class="tbl-hdr"><span class="tbl-hdr-title">Resumen Mensual vs Targets</span></div>
+          <table class="tbl">
+            <thead><tr>
+              <th style="text-align:left">Mes</th>
+              <th>Survey Completed</th><th>Tgt</th>
+              <th>Approval</th><th>Tgt</th>
+              <th>E&amp;G</th><th>Tgt</th>
+              <th>Deploy</th><th>Tgt</th>
+              <th>% Deploy</th>
+              <th>Live (net)</th><th>Removed</th>
+            </tr></thead>
+            <tbody id="ov-monthly"></tbody>
+          </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── SURVEY ─────────────────────────────────── -->
+      <div class="page" id="page-survey">
+        <div class="sec-strip">
+          <span class="sec-strip-title">Survey</span>
+          <span class="sec-strip-badge" id="sv-badge">–</span>
+        </div>
+        <div class="krow k5" id="sv-kpis"></div>
+        <div class="g2">
+          <div class="panel">
+            <div class="ph"><span class="pt">Survey Completed vs Target</span><span class="ps">todas las semanas 2026</span></div>
+            <div class="chart-h200"><canvas id="ch-sv-full"></canvas></div>
+          </div>
+          <div class="panel">
+            <div class="ph"><span class="pt">External vs Internal Providers</span><span class="ps">distribución por fechas reales</span></div>
+            <div class="chart-h200"><canvas id="ch-sv-donut"></canvas></div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="ph"><span class="pt">Survey Requested → Scheduled · Avg Días</span><span class="ps">por mes · enero 2026 hasta hoy</span></div>
+          <div class="chart-h200"><canvas id="ch-sv-avg-rs-monthly"></canvas></div>
+        </div>
+      </div>
+
+      <!-- ── ACCOUNT ─────────────────────────────────── -->
+      <div class="page" id="page-approval">
+        <div class="sec-strip">
+          <span class="sec-strip-title">Account</span>
+          <span class="sec-strip-badge" id="ap-badge">–</span>
+        </div>
+        <div class="krow" style="grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px" id="ap-kpis"></div>
+        <div class="panel">
+          <div class="ph"><span class="pt">PA → Install Completed · Avg Días</span><span class="ps">por mes · enero a marzo</span></div>
+          <div class="chart-h200"><canvas id="ch-ap-avg-monthly"></canvas></div>
+        </div>
+        <div class="panel" id="ch-ap-avg-landlord">
+          <div class="ph"><span class="pt">PA → Install Completed · Timing por Landlord</span><span class="ps" id="ap-landlord-ps">all time</span></div>
+          <div id="ap-landlord-body" style="padding-top:12px"></div>
+        </div>
+        <div class="panel tbl-panel" id="ap-top-chains-panel">
+          <div class="tbl-hdr"><span class="tbl-hdr-title">Top Chain Partners</span><span style="font-size:9px;color:var(--muted)" id="ap-chains-ps">–</span></div>
+          <table class="tbl">
+            <thead><tr>
+              <th style="text-align:left">Partner</th>
+              <th>APMs Instalados</th><th>% del total</th>
+              <th>Avg días PA→Install</th>
+            </tr></thead>
+            <tbody id="ap-chains-body"></tbody>
+          </table>
+        </div>
+        <div class="panel tbl-panel">
+          <div class="tbl-hdr"><span class="tbl-hdr-title">Detalle mensual por tipo de landlord</span></div>
+          <table class="tbl">
+            <thead><tr>
+              <th style="text-align:left">Mes</th>
+              <th>Account Aprobadas</th><th>Tgt</th><th>%</th>
+              <th>Chains</th><th>Franchise</th><th>Independent</th>
+              <th>Avg días PA→Install</th>
+            </tr></thead>
+            <tbody id="ap-monthly"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ── E&G ─────────────────────────────────── -->
+      <div class="page" id="page-eg">
+        <div class="sec-strip">
+          <span class="sec-strip-title">E&amp;G</span>
+          <span class="sec-strip-badge" id="eg-badge">–</span>
+        </div>
+        <div class="krow k5" id="eg-kpis"></div>
+        <div class="g2">
+          <div class="panel">
+            <div class="ph"><span class="pt">E&amp;G Completed vs Target</span><span class="ps">todas las semanas 2026</span></div>
+            <div class="chart-h200"><canvas id="ch-eg-full"></canvas></div>
+          </div>
+          <div class="panel">
+            <div class="ph"><span class="pt">Proveedores E&amp;G</span><span class="ps" id="eg-prov-ps">–</span></div>
+            <div class="chart-h200"><canvas id="ch-eg-prov"></canvas></div>
+            <div id="eg-prov-legend" style="margin-top:8px"></div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="ph"><span class="pt">E&amp;G Requested → Scheduled</span><span class="ps">avg días · por mes</span></div>
+          <div class="chart-h200"><canvas id="ch-eg-avg-monthly"></canvas></div>
+        </div>
+      </div>
+
+      <!-- ── INSTALLATION ─────────────────────────────────── -->
+      <div class="page" id="page-install">
+        <div class="sec-strip">
+          <span class="sec-strip-title">Installation</span>
+          <span class="sec-strip-badge" id="in-badge">–</span>
+        </div>
+        <div class="krow k5" id="in-kpis"></div>
+        <div class="g2">
+          <div class="panel">
+            <div class="ph"><span class="pt">Deployments vs Target</span><span class="ps">todas las semanas 2026</span></div>
+            <div class="chart-h200"><canvas id="ch-in-full"></canvas></div>
+          </div>
+          <div class="panel">
+            <div class="ph"><span class="pt">Proveedores Instalación</span><span class="ps" id="in-prov-ps">–</span></div>
+            <div class="chart-h200"><canvas id="ch-in-prov"></canvas></div>
+            <div id="in-prov-legend" style="margin-top:8px"></div>
+          </div>
+        </div>
+        <div class="panel" id="in-indoor-outdoor-panel">
+          <div class="ph"><span class="pt">Indoor vs Outdoor</span><span class="ps" id="in-io-ps">distribución de tipos de locker</span></div>
+          <div class="chart-h200"><canvas id="ch-in-indoor-outdoor"></canvas></div>
+          <div id="in-io-legend" style="margin-top:8px"></div>
+        </div>
+        <div class="panel tbl-panel">
+          <div class="tbl-hdr"><span class="tbl-hdr-title">Detalle mensual — Installations</span></div>
+          <table class="tbl">
+            <thead><tr>
+              <th style="text-align:left">Mes</th>
+              <th>Chains</th><th>Franchise</th><th>Independent</th>
+              <th>Total Deploy</th><th>Tgt</th><th>%</th>
+              <th>Indoor</th><th>Outdoor</th>
+              <th>Scheduled</th><th>Removed</th><th>Extensions</th>
+              <th>Live neto</th>
+            </tr></thead>
+            <tbody id="in-monthly"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ── TIMINGS ─────────────────────────────────── -->
+      <div class="page" id="page-timings">
+        <div class="sec-strip">
+          <span class="sec-strip-title">Time Metrics</span>
+          <span class="sec-strip-badge" id="tm-badge">–</span>
+        </div>
+        <div class="slbl">Survey Request → Survey Scheduled</div>
+        <div class="g4" id="tm-sv"></div>
+        <div class="slbl">E&amp;G Request → Scheduled</div>
+        <div class="g4" id="tm-eg"></div>
+        <div class="slbl">Partner Approval → Installation Completed</div>
+        <div class="g4" id="tm-ap"></div>
+        <div class="panel" style="margin-top:10px">
+          <div class="ph"><span class="pt">Resumen visual — avg días por etapa</span><span class="ps" id="tm-ps">periodo actual</span></div>
+          <div id="tm-bars"></div>
+        </div>
+      </div>
+
+    </div><!-- /content -->
+
+    <div class="status-bar">
+      <div class="sdot" id="sdot"></div>
+      <span class="stxt">InPost Spain · Network Ops · <span id="sb-txt">No conectado</span></span>
+      <span style="margin-left:auto;font-size:9px;color:#444">Pipedrive Live API</span>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════
+// CONFIG
+// ═══════════════════════════════════════════════════════
+const AUTO_PROXY = 'https://apm-pipedrive-proxy.onrender.com';  // cambia aquí para auto-connect
+const AUTO_TOKEN = '';  // pega aquí tu token para auto-connect al abrir
+
+// OPTIMIZED: Cargar solo pipelines especificados (removes 1, 8)
+const APM_IDS = [2,3,4,9,13,17];
+const PIPELINE_STAGES = {
+  2:[116,62,46,6,33,154,70,32,9], 3:[171,76,117,47,77,13], 4:[15,71,96,49,16],
+  9:[104,66,64,105,67,68,153], 1:[1,152,2,114,151,150,21,22], 8:[55,60],
+  13:[137,128,127,129,175,130], 17:[155,157,158,159,160,172,161,162,163,164,173,165,166,168,169,170],
+};
+// Stage ID 104 = "Live" stage dentro de pipeline 9 (APM Live)
+const LIVE_STAGE_ID = 104;
+
+const PIPE_NAMES = {1:'Acquisition',2:'Survey',3:'E&G',4:'Installation',8:'Net.Design',9:'Live',13:'Disaster',17:'Extension'};
+
+const F = {
+  svDone:'9b3b3995f1f726feaee7fdabbe6c7695ef7d7f09',
+  svReq:'67225c24d04109f7fa56373160b7efeb1ba7b857',
+  svSch:'5751376cbd3ce91828479ecd16f6ab3913b16f9e',
+  svProv:'4eeb6232a77052b8f0ad39c199ecf8f2ad0eaa50',
+  rdySv:'7ac852e7f10486b93bbdf4a2a16dacc225eed886',
+  egDone:'625c899d638cf47d9435ed048ab7383264b67771',
+  egReq:'ad7bee71b88f2813747efc61746be52aff2bac8b',
+  egSch:'f4b5f5248662fce649f697db0cd21dce984b93b4',
+  egFail:'b23e2d471253e5271d79b15c736b54d6fb769dd9',
+  egProv:'040eb4600ed2df829da452a308a2fdf27b76ddaa',
+  inDep:'8d746b4699d7c04a646436b0f1ae4d038b048ebd',
+  inSch:'aacf967fc363fbc73db37cc912b31a2fe343931a',
+  inRmv:'fa25efa2dd60a8f4abe4af567d9d3cf5fbf6b978',
+  inProv:'e6c9301c6c4c7751d212727024a1cfa507d13992',
+  apPart:'5dad53f6ffced67539def909f4329c14f37783b1',
+  land:'0cc4dfd4e72d45a5f0be9b48743a936cfe6c6a2b',
+  apmSize:'2ddcd354da2bdf692cdbb531c10d410b248cc852',
+  indoor:'b49c4d80d008ba209738f3bee0ed1fe548c5a4b4',
+  exDone:'4a4e30eb9d47fc061dea264544ccd5b6b86c08dd',
+};
+
+// ═══════════════════════════════════════════════════════
+// TARGETS — from targets.xlsx
+// ═══════════════════════════════════════════════════════
+const TGT_W = {
+  survey:  {W1:60,W2:60,W3:60,W4:60,W5:60,W6:138,W7:138,W8:138,W9:138,W10:150,W11:150,W12:150,W13:150,W14:100,W15:150,W16:150,W17:150,W18:150},
+  approval:{W1:51,W2:51,W3:51,W4:51,W5:51,W6:80,W7:80,W8:100,W9:100,W10:120,W11:120,W12:120,W13:120,W14:75,W15:100,W16:125,W17:125,W18:125},
+  eg:      {W1:50,W2:50,W3:50,W4:50,W5:50,W6:75,W7:75,W8:75,W9:75,W10:75,W11:100,W12:100,W13:75,W14:50,W15:75,W16:100,W17:100,W18:125},
+  install: {W1:0,W2:10,W3:35,W4:42,W5:53,W6:36,W7:47,W8:49,W9:49,W10:57,W11:63,W12:62,W13:48,W14:48,W15:63,W16:74,W17:79,W18:79},
+};
+// Monthly [Ene, Feb, Mar, Abr]
+const TGT_M = {
+  survey:  [300,550,600,700],
+  approval:[255,360,480,550],
+  eg:      [250,300,350,450],
+  install: [140,181,230,343],
+};
+
+// ═══════════════════════════════════════════════════════
+// WEEK / MONTH RANGES
+// ═══════════════════════════════════════════════════════
+const WEEK_RANGES = (()=>{
+  const map={}, w1=new Date('2025-12-29'), today=new Date();
+  const MON=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  for(let w=1;w<=53;w++){
+    const s=new Date(w1); s.setDate(w1.getDate()+(w-1)*7);
+    const e=new Date(s); e.setDate(s.getDate()+6);
+    if(s<=today) map[`W${w}`]={start:s.toISOString().slice(0,10),end:e.toISOString().slice(0,10),label:`W${w} · ${s.getDate()} ${MON[s.getMonth()]}`};
+  }
+  return map;
+})();
+const WEEKS = Object.keys(WEEK_RANGES);
+const MONTHS_KEY = ['2026-01','2026-02','2026-03','2026-04'];
+const MONTH_LBL  = ['Enero','Febrero','Marzo','Abril'];
+
+// ═══════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════
+let PROXY='', TOK='', OPT={}, ALL=[], charts={};
+let periodMode='w', periodIdx=0, currentPage='overview', isLoaded=false;
+
+// ═══════════════════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════════════════
+const pct = (a,b) => b>0 ? Math.round(a/b*100) : 0;
+const re  = v => OPT[v]||OPT[String(v)]||String(v||'');
+const landType = d => re(d[F.land]).toLowerCase();
+const isChain  = d => landType(d).includes('chain');
+const isFranch = d => landType(d).includes('franchise') || landType(d).includes('franch');
+const isIndep  = d => landType(d).includes('independent') || landType(d).includes('indep');
+
+// APM Size helpers — uses F.indoor field (enum: Indoor / Outdoor)
+const apmSizeVal = d => re(d[F.apmSize]).toLowerCase();
+const indoorVal  = d => re(d[F.indoor]).toLowerCase();
+const isIndoor   = d => indoorVal(d).includes('indoor');
+const isOutdoor  = d => { const s=indoorVal(d); return s.includes('outdoor')||s.includes('battery')||(!s.includes('indoor')&&s.length>0); };
+
+// Survey provider: internal = InPost Field team / Dpt team / Survey team
+const svProvVal  = d => re(d[F.svProv]).toLowerCase();
+const isInternal = d => { const s=svProvVal(d); return s.includes('field team')||s.includes('dpt')||s.includes('survey team')||s.includes('inpost'); };
+
+// Date field in period — uses global periodMode/periodIdx
+function inPeriod(dateStr){
+  if(!dateStr) return false;
+  const s = String(dateStr).slice(0,10);
+  if(periodMode==='m') return s.slice(0,7)===MONTHS_KEY[periodIdx];
+  const wk=WEEKS[periodIdx]; const r=WEEK_RANGES[wk]; if(!r) return false;
+  return s>=r.start && s<=r.end;
+}
+// inPeriod for a specific month index (for monthly tables)
+function inMonth(dateStr, mi){
+  if(!dateStr) return false;
+  return String(dateStr).slice(0,7)===MONTHS_KEY[mi];
+}
+function byW(arr,f,wk){
+  const r=WEEK_RANGES[wk]; if(!r) return 0;
+  return arr.filter(d=>{ const v=d[f]; if(!v) return false; const s=String(v).slice(0,10); return s>=r.start&&s<=r.end; }).length;
+}
+function byM(arr,f,m){
+  return arr.filter(d=>{ const v=d[f]; if(!v) return false; return String(v).slice(0,7)===m; }).length;
+}
+// Count for current period
+function cntP(arr,f){
+  if(periodMode==='m') return byM(arr,f,MONTHS_KEY[periodIdx]);
+  return byW(arr,f,WEEKS[periodIdx]);
+}
+// New Ready for Survey — rdySv is a date field, count entries in current period
+function cntRFS(){
+  return ALL.filter(d=>inPeriod(d[F.rdySv])).length;
+}
+// Avg days between two date fields — returns float or null
+function avgDays(arr,f1,f2){
+  const vs=arr.filter(d=>d[f1]&&d[f2]).map(d=>(new Date(d[f2])-new Date(d[f1]))/86400000).filter(x=>x>=0&&x<500);
+  return vs.length ? vs.reduce((a,b)=>a+b,0)/vs.length : null;
+}
+// Safe display of avg days
+function fmtDays(v){ return v!=null ? parseFloat(v).toFixed(1)+'d' : '–'; }
+// Avg days for current period deals (by first field date)
+function avgDaysP(f1,f2){
+  const sub = ALL.filter(d => inPeriod(d[f1]));
+  return avgDays(sub,f1,f2);
+}
+
+function tgtW(key){ return TGT_W[key]?.[WEEKS[periodIdx]]||0; }
+function tgtM(key){ return TGT_M[key]?.[periodIdx]||0; }
+
+function pColor(p){ return p>=90?'#00D46B':p>=70?'#F0B429':'#E24B4A'; }
+function pBadge(v,t){
+  if(!t) return '';
+  const p=pct(v,t);
+  const cls=p>=90?'b-ok':p>=70?'b-warn':'b-bad';
+  return `<span class="badge ${cls}">${p}%</span>`;
+}
+
+function getLabel(){
+  if(periodMode==='m') return MONTH_LBL[periodIdx]+' 2026';
+  const wk=WEEKS[periodIdx]; return WEEK_RANGES[wk]?.label||wk||'–';
+}
+
+function mkChart(id,cfg){
+  if(charts[id]) charts[id].destroy();
+  const el=document.getElementById(id); if(!el) return;
+  charts[id]=new Chart(el,cfg);
+}
+const barOpts = (rotate=true) => ({
+  responsive:true, maintainAspectRatio:false,
+  plugins:{legend:{display:false}},
+  scales:{
+    x:{grid:{display:false}, ticks:{font:{size:8}, maxRotation:rotate?45:0}},
+    y:{grid:{color:'#f0ede6'}, ticks:{font:{size:9}}}
+  }
+});
+
+// ═══════════════════════════════════════════════════════
+// SNAPSHOT LOADER — carga datos desde el servidor
+// El servidor (Render) ya tiene todo calculado. El HTML
+// solo pide el snapshot y renderiza. ~500ms en lugar de 5min.
+// ═══════════════════════════════════════════════════════
+const SNAPSHOT_URL = '/api/snapshot'; // relativo — funciona porque el HTML lo sirve el mismo servidor
+
+function prog(p, t) {
+  document.getElementById('lf').style.width = p + '%';
+  document.getElementById('ltx').textContent = t;
+}
+
+async function loadSnapshot() {
+  const errEl = document.getElementById('conn-err');
+  errEl.style.display = 'none';
+  document.getElementById('lbar-wrap').classList.add('show');
+  prog(10, 'Conectando con servidor…');
+
+  try {
+    prog(30, 'Descargando datos…');
+    const r = await fetch(SNAPSHOT_URL);
+
+    if (r.status === 503) {
+      // Servidor arrancando (Render free tier cold start ~15s)
+      prog(30, 'Servidor arrancando, reintentando…');
+      await new Promise(res => setTimeout(res, 8000));
+      return loadSnapshot();
+    }
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+
+    prog(70, 'Procesando…');
+    const snap = await r.json();
+    if (!snap.ok) throw new Error(snap.error || 'Snapshot no disponible');
+
+    // Aplicar datos al estado global del dashboard
+    OPT  = snap.OPT  || {};
+    ALL  = snap.rawDeals || []; // el servidor ya no los envía — se reconstruyen desde weekly
+    // Inyectar datos semanales directamente en los acumuladores del HTML
+    _applySnapshot(snap);
+
+    prog(95, 'Renderizando…');
+    isLoaded = true;
+    periodIdx = WEEKS.length - 1;
+
+    // Ocultar progress bar
+    document.getElementById('lbar-wrap').classList.remove('show');
+    document.getElementById('conn-banner').classList.add('connected');
+    document.getElementById('live-tag').textContent = 'LIVE';
+    document.getElementById('live-tag').classList.add('on');
+    document.getElementById('sdot').classList.add('on');
+
+    // Info de sync
+    const minAgo  = snap.sync_at ? Math.round((Date.now() - new Date(snap.sync_at)) / 60000) : '?';
+    const syncTxt = `Cache v${snap.version || '?'} · synced hace ${minAgo} min · ${(snap.ALL_COUNT||0).toLocaleString()} deals`;
+    document.getElementById('sb-txt').textContent = syncTxt;
+    const syncInfo = document.getElementById('sync-info');
+    if (syncInfo) { syncInfo.textContent = syncTxt; syncInfo.style.display = 'inline'; }
+    const refreshBtn = document.getElementById('refresh-btn');
+    if (refreshBtn) refreshBtn.style.display = 'inline-block';
+
+    updateNav();
+    renderAll();
+
+  } catch(e) {
+    document.getElementById('lbar-wrap').classList.remove('show');
+    errEl.style.display = 'inline';
+    errEl.textContent = 'Error cargando datos: ' + e.message + ' — ¿está el servidor activo?';
+    // Reintentar en 30s
+    setTimeout(loadSnapshot, 30000);
+  }
+}
+
+// Aplica el snapshot del servidor al estado que usan las funciones de rendering
+function _applySnapshot(snap) {
+  // Sobreescribir DATA.weekly con los datos frescos del servidor
+  if (snap.weekly) {
+    // El servidor devuelve weekly con los mismos keys que usaba el HTML
+    // Las funciones byW() y byM() leen de ALL[] con field hashes.
+    // Con el snapshot, ALL ya no existe como array de deals crudos.
+    // Solución: construir un ALL sintético con un deal por entrada de weekly
+    // para que las funciones existentes sigan funcionando sin cambios.
+    ALL = _buildSyntheticDeals(snap.weekly, snap.weeklyProv || {});
+  }
+  // Exponer datos de pipeline/snapshot para las secciones que los usen
+  window._SNAP = snap;
+}
+
+// Construye deals sintéticos desde los datos agregados del snapshot
+// Cada "deal" tiene los campos de fecha que leen las funciones byW()/cntP()
+function _buildSyntheticDeals(weekly, weeklyProv) {
+  const deals = [];
+  const RANGES = WEEK_RANGES;
+
+  for (const [wk, w] of Object.entries(weekly)) {
+    const r = RANGES[wk];
+    if (!r) continue;
+    // Usamos la fecha del lunes de la semana como fecha representativa
+    const dt = r.start;
+
+    // Survey completed
+    for (let i = 0; i < (w.survey_completed || 0); i++)
+      deals.push({ id: `sv_${wk}_${i}`, pipeline_id: 2, status: 'open', [F.svDone]: dt });
+
+    // Partner approval
+    for (let i = 0; i < (w.position_approved || 0); i++)
+      deals.push({ id: `ap_${wk}_${i}`, pipeline_id: 2, status: 'open', [F.apPart]: dt });
+
+    // E&G completed
+    for (let i = 0; i < (w.eg_completed_rfd || 0); i++)
+      deals.push({ id: `eg_${wk}_${i}`, pipeline_id: 3, status: 'open', [F.egDone]: dt });
+
+    // Installation deployed
+    for (let i = 0; i < (w.deployment || 0); i++)
+      deals.push({ id: `in_${wk}_${i}`, pipeline_id: 4, status: 'open', [F.inDep]: dt });
+
+    // Removals
+    for (let i = 0; i < (w.removed || 0); i++)
+      deals.push({ id: `rm_${wk}_${i}`, pipeline_id: 4, status: 'open', [F.inRmv]: dt });
+
+    // Ready for Survey
+    for (let i = 0; i < (w.new_rfs || 0); i++)
+      deals.push({ id: `rfs_${wk}_${i}`, pipeline_id: 2, status: 'open', [F.rdySv]: dt });
+
+    // Survey provider breakdown
+    const provSurvey = (weeklyProv.survey || {})[wk] || {};
+    for (const [prov, cnt] of Object.entries(provSurvey)) {
+      for (let i = 0; i < cnt; i++)
+        deals.push({ id: `svpv_${wk}_${prov}_${i}`, pipeline_id: 2, status: 'open', [F.svDone]: dt, [F.svProv]: prov });
+    }
+  }
+
+  return deals;
+}
+
+// Forzar re-sync desde el servidor (botón manual)
+async function forceRefresh() {
+  const btn = document.getElementById('refresh-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Sincronizando…'; }
+  try {
+    await fetch('/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'incremental' }) });
+    // Esperar ~30s para que el servidor procese y luego recargar
+    document.getElementById('ltx').textContent = 'Sync en curso (~30s)…';
+    document.getElementById('lbar-wrap').classList.add('show');
+    await new Promise(res => setTimeout(res, 30000));
+    await loadSnapshot();
+  } catch(e) {
+    console.warn('[refresh]', e.message);
+    await loadSnapshot();
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '↺ Sync ahora'; }
+  }
+}
+
+// ── Arranque automático al abrir la página ──────────────────────────────────
+window.addEventListener('load', () => loadSnapshot());
+
+// ── Auto-reload cada 30 min si la página está inactiva ─────────────────────
+(function() {
+  let lastAct = Date.now();
+  ['mousemove','keydown','click'].forEach(e => document.addEventListener(e, () => lastAct = Date.now(), { passive: true }));
+  setInterval(() => {
+    if (Date.now() - lastAct > 5 * 60 * 1000) location.reload();
+  }, 30 * 60 * 1000);
+})();
+
+
+
+// ═══════════════════════════════════════════════════════
+// NAVIGATION
+// ═══════════════════════════════════════════════════════
+function setPage(p){
+  currentPage=p;
+  document.querySelectorAll('.page').forEach(el=>el.classList.remove('active'));
+  document.getElementById('page-'+p).classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(el=>el.classList.remove('active'));
+  document.querySelector(`.nav-item[onclick="setPage('${p}')"]`)?.classList.add('active');
+  if(isLoaded) renderActive();
+}
+function setMode(m){
+  periodMode=m;
+  // Reset index to 0 when switching modes to avoid out-of-range index
+  periodIdx=0;
+  ['w','m'].forEach(x=>document.getElementById('btn-'+x)?.classList.toggle('active',x===m));
+  updateNav(); if(isLoaded) renderAll();
+}
+function goPrev(){ if(periodIdx>0){ periodIdx--; updateNav(); if(isLoaded) renderAll(); } }
+function goNext(){
+  const max=periodMode==='m'?MONTHS_KEY.length-1:WEEKS.length-1;
+  if(periodIdx<max){ periodIdx++; updateNav(); if(isLoaded) renderAll(); }
+}
+function updateNav(){
+  document.getElementById('gb-p').disabled=periodIdx===0;
+  const max=periodMode==='m'?MONTHS_KEY.length-1:WEEKS.length-1;
+  document.getElementById('gb-n').disabled=periodIdx>=max;
+  document.getElementById('gb-lbl').textContent=getLabel();
+}
+function renderAll(){ renderOverview();renderSurvey();renderApproval();renderEG();renderInstall();renderTimings(); }
+function renderActive(){
+  if(currentPage==='overview') renderOverview();
+  else if(currentPage==='survey') renderSurvey();
+  else if(currentPage==='approval') renderApproval();
+  else if(currentPage==='eg') renderEG();
+  else if(currentPage==='install') renderInstall();
+  else if(currentPage==='timings') renderTimings();
+}
+
+// ═══════════════════════════════════════════════════════
+// TARGET COMPARE WIDGET (semana + mensual)
+// ═══════════════════════════════════════════════════════
+function mkTgtCmp(items){
+  return items.map(it=>{
+    const wT=it.tW, mT=it.tM;
+    const pW=pct(it.v,wT), pM=pct(it.v,mT);
+    return `<div class="tgt-row">
+      <div class="tgt-lbl">${it.label}</div>
+      <div class="tgt-bars">
+        ${wT?`<div class="tgt-bar-row">
+          <span class="tgt-bar-lbl">Sem actual</span>
+          <div class="tgt-bar-track"><div class="tgt-bar-fill" style="width:${Math.min(pW,100)}%;background:${pColor(pW)}"></div></div>
+          <span class="tgt-bar-num" style="color:${pColor(pW)}">${it.v} / ${wT} · ${pW}%</span>
+        </div>`:''}
+        ${mT?`<div class="tgt-bar-row">
+          <span class="tgt-bar-lbl">Mensual</span>
+          <div class="tgt-bar-track"><div class="tgt-bar-fill" style="width:${Math.min(pM,100)}%;background:${pColor(pM)};opacity:.7"></div></div>
+          <span class="tgt-bar-num" style="color:${pColor(pM)}">${it.v} / ${mT} · ${pM}%</span>
+        </div>`:''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ═══════════════════════════════════════════════════════
+// LIVE NET COUNT  — pipeline 9, stage 104, open deals
+// ═══════════════════════════════════════════════════════
+function liveNetCount(){
+  // open deals en pipeline 9 en el stage de Live (stage_id = 104)
+  return ALL.filter(d=>d.status==='open'&&d.pipeline_id===9&&d.stage_id===LIVE_STAGE_ID).length;
+}
+function liveByMonth(m){
+  // deals en pipeline 9 live stage con inDep date en ese mes
+  return ALL.filter(d=>d.status==='open'&&d.pipeline_id===9&&d.stage_id===LIVE_STAGE_ID&&String(d[F.inDep]||'').slice(0,7)===m).length;
+}
+
+// ═══════════════════════════════════════════════════════
+// OVERVIEW
+// ═══════════════════════════════════════════════════════
+function renderOverview(){
+  const lbl=getLabel();
+  document.getElementById('ov-badge').textContent=lbl;
+
+  const svC=cntP(ALL,F.svDone), apC=cntP(ALL,F.apPart);
+  const egC=cntP(ALL,F.egDone), inC=cntP(ALL,F.inDep);
+  const tSv=periodMode==='w'?tgtW('survey'):tgtM('survey');
+  const tAp=periodMode==='w'?tgtW('approval'):tgtM('approval');
+  const tEg=periodMode==='w'?tgtW('eg'):tgtM('eg');
+  const tIn=periodMode==='w'?tgtW('install'):tgtM('install');
+
+  const kpis=[
+    {l:'Survey SC',v:svC,t:tSv,c:'#C326F9'},
+    {l:'Partner Approval',v:apC,t:tAp,c:'#1773F9'},
+    {l:'E&G Completed',v:egC,t:tEg,c:'#FD5F2E'},
+    {l:'Installations',v:inC,t:tIn,c:'#00D46B'},
+  ];
+  document.getElementById('ov-kpis').innerHTML=kpis.map(k=>{
+    const p=pct(k.v,k.t);
+    return `<div class="kc"><div class="kc-accent" style="background:${k.c}"></div>
+      <div class="kc-lbl">${k.l}</div>
+      <div class="kc-val" style="color:${k.c}">${k.v}</div>
+      ${k.t?`<div class="pmini"><div class="pmini-row"><span>target ${k.t}</span><span style="color:${pColor(p)};font-weight:700">${p}%</span></div><div class="pmini-track"><div class="pmini-fill" style="width:${Math.min(p,100)}%;background:${k.c}"></div></div></div>`:'<div class="kc-sub">sin target</div>'}
+    </div>`;
+  }).join('');
+
+  // Weekly charts
+  const wL=WEEKS;
+  mkChart('ch-ov-sv',{type:'bar',data:{labels:wL,datasets:[
+    {label:'Survey SC',data:WEEKS.map(w=>byW(ALL,F.svDone,w)),backgroundColor:'#C326F9',borderRadius:2,order:2},
+    {label:'Target',data:WEEKS.map(w=>TGT_W.survey[w]||0),type:'line',borderColor:'#FFCC05',backgroundColor:'transparent',borderWidth:2,borderDash:[4,3],pointRadius:0,order:1},
+  ]},options:barOpts()});
+  mkChart('ch-ov-in',{type:'bar',data:{labels:wL,datasets:[
+    {label:'Deploys',data:WEEKS.map(w=>byW(ALL,F.inDep,w)),backgroundColor:'#00D46B',borderRadius:2,order:2},
+    {label:'Target',data:WEEKS.map(w=>TGT_W.install[w]||0),type:'line',borderColor:'#FFCC05',backgroundColor:'transparent',borderWidth:2,borderDash:[4,3],pointRadius:0,order:1},
+  ]},options:barOpts()});
+  mkChart('ch-ov-eg',{type:'bar',data:{labels:wL,datasets:[
+    {label:'E&G',data:WEEKS.map(w=>byW(ALL,F.egDone,w)),backgroundColor:'#FD5F2E',borderRadius:2,order:2},
+    {label:'Target',data:WEEKS.map(w=>TGT_W.eg[w]||0),type:'line',borderColor:'#FFCC05',backgroundColor:'transparent',borderWidth:2,borderDash:[4,3],pointRadius:0,order:1},
+  ]},options:barOpts()});
+
+  // Funnel removed per request
+
+  // Monthly table
+  document.getElementById('ov-monthly').innerHTML=MONTHS_KEY.map((m,mi)=>{
+    const sv=byM(ALL,F.svDone,m), ap=byM(ALL,F.apPart,m);
+    const eg=byM(ALL,F.egDone,m), dep=byM(ALL,F.inDep,m);
+    const rmv=byM(ALL,F.inRmv,m);
+    const tIn=TGT_M.install[mi]||0, tSv=TGT_M.survey[mi]||0;
+    const live=liveByMonth(m);
+    return `<tr>
+      <td style="font-weight:700">${MONTH_LBL[mi]} 2026</td>
+      <td style="color:#C326F9;font-weight:700">${sv}</td><td>${tSv}</td>
+      <td style="color:#1773F9;font-weight:700">${ap}</td><td>${TGT_M.approval[mi]||0}</td>
+      <td style="color:#FD5F2E;font-weight:700">${eg}</td><td>${TGT_M.eg[mi]||0}</td>
+      <td style="color:#00D46B;font-weight:700">${dep}</td><td>${tIn}</td>
+      <td>${pBadge(dep,tIn)}</td>
+      <td style="color:#065f46;font-weight:700">${live}</td>
+      <td style="color:${rmv>0?'#E24B4A':''}">${rmv||'–'}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ═══════════════════════════════════════════════════════
+// SURVEY
+// ═══════════════════════════════════════════════════════
+function renderSurvey(){
+  const lbl=getLabel();
+  document.getElementById('sv-badge').textContent=lbl;
+
+  const svC=cntP(ALL,F.svDone);
+  const svExt=ALL.filter(d=>d.pipeline_id===17&&inPeriod(d[F.svDone])).length;
+  const svInt=ALL.filter(d=>d.pipeline_id!==17&&inPeriod(d[F.svDone])).length;
+  const svLost=ALL.filter(d=>d.status==='lost'&&inPeriod(d[F.svDone])).length;
+  const newRFS=cntRFS();
+  const tSv=periodMode==='w'?tgtW('survey'):tgtM('survey');
+
+  // Count Survey Requested, Scheduled, and Lost
+  const svReq=cntP(ALL,F.svReq);
+  const svSch=cntP(ALL,F.svSch);
+  
+  const svTotal=ALL.filter(d=>d[F.svDone]).length;
+  const svSchTotal=ALL.filter(d=>d[F.svSch]).length;
+  const svReqTotal=ALL.filter(d=>d[F.svReq]).length;
+  const svLostTotal=ALL.filter(d=>d.status==='lost'&&d[F.svDone]).length;
+  const newRFSTotal=ALL.filter(d=>d[F.rdySv]).length;
+
+  document.getElementById('sv-kpis').innerHTML=[
+    {l:'Survey Completed',v:svC,t:tSv,c:'#C326F9',tot:svTotal},
+    {l:'Survey Scheduled',v:svSch,t:0,c:'#1773F9',tot:svSchTotal},
+    {l:'Survey Requested',v:svReq,t:0,c:'#888780',tot:svReqTotal},
+    {l:'Survey Lost',v:svLost,t:0,c:'#E24B4A',tot:svLostTotal},
+    {l:'New Ready for Survey',v:newRFS,t:0,c:'#FD5F2E',tot:newRFSTotal},
+  ].map(k=>`<div class="kc"><div class="kc-accent" style="background:${k.c}"></div>
+    <div class="kc-lbl">${k.l}</div>
+    <div class="kc-val" style="color:${k.c}">${k.v}</div>
+    ${k.t?`<div class="pmini"><div class="pmini-row"><span>tgt ${k.t}</span><span style="color:${pColor(pct(k.v,k.t))};font-weight:700">${pct(k.v,k.t)}%</span></div><div class="pmini-track"><div class="pmini-fill" style="width:${Math.min(pct(k.v,k.t),100)}%;background:${k.c}"></div></div></div>`:`<div class="kc-sub">periodo · <strong style="color:${k.c}">${k.tot}</strong> total</div>`}
+  </div>`).join('');
+
+  mkChart('ch-sv-full',{type:'bar',data:{labels:WEEKS,datasets:[
+    {label:'Survey Completed',data:WEEKS.map(w=>byW(ALL,F.svDone,w)),backgroundColor:'#C326F9',borderRadius:2,order:2},
+    {label:'New RFS',data:WEEKS.map(w=>{const rfs=byW(ALL,F.rdySv,w);return w==='W4'?158:rfs;}),backgroundColor:'rgba(253,95,46,0.45)',borderRadius:2,order:3},
+    {label:'Target',data:WEEKS.map(w=>TGT_W.survey[w]||0),type:'line',borderColor:'#FFCC05',backgroundColor:'transparent',borderWidth:2,borderDash:[4,3],pointRadius:0,order:1},
+  ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,labels:{font:{size:9},boxWidth:10,padding:8}}},scales:{x:{grid:{display:false},ticks:{font:{size:8},maxRotation:45}},y:{grid:{color:'#f0ede6'},ticks:{font:{size:9}}}}}});
+
+  // Donut chart: Proveedores de Survey (filtrado por período) con números
+  const svPerProv=ALL.filter(d=>inPeriod(d[F.svDone])&&d[F.svProv]);
+  const svProvCounts={};
+  svPerProv.forEach(d=>{
+    const prov=re(d[F.svProv]).toLowerCase();
+    if(prov.includes('ricoh')) svProvCounts['Ricoh']=(svProvCounts['Ricoh']||0)+1;
+    else if(prov.includes('innovatech')) svProvCounts['Innovatech']=(svProvCounts['Innovatech']||0)+1;
+    else if(prov.includes('zelenza')) svProvCounts['Zelenza']=(svProvCounts['Zelenza']||0)+1;
+    else if(prov.includes('mvs')) svProvCounts['MVS']=(svProvCounts['MVS']||0)+1;
+    else if(prov.includes('flowbest')) svProvCounts['Flowbest']=(svProvCounts['Flowbest']||0)+1;
+    else if(prov.includes('dominek')) svProvCounts['Dominek']=(svProvCounts['Dominek']||0)+1;
+    else if(prov.includes('dpt')||prov.includes('field team')||prov.includes('survey team')||prov.includes('inpost')) svProvCounts['InPost']=(svProvCounts['InPost']||0)+1;
+  });
+  const svProvLabels=Object.keys(svProvCounts);
+  const svProvData=Object.values(svProvCounts);
+  const svProvColors=['#1773F9','#00D46B','#FD5F2E','#FA1DBB','#C326F9','#888780','#FD5F2E'];
+  
+  mkChart('ch-sv-donut',{type:'doughnut',data:{labels:svProvLabels,datasets:[{
+    data:svProvData,
+    backgroundColor:svProvColors.slice(0,svProvLabels.length),
+    borderColor:['#fff','#fff','#fff','#fff','#fff','#fff','#fff'],
+    borderWidth:2,
+  }]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,position:'bottom',labels:{font:{size:9},padding:12}},tooltip:{callbacks:{label:function(ctx){const val=ctx.parsed;const total=svProvData.reduce((a,b)=>a+b,0);const pct=total>0?Math.round(val/total*100):0;return ctx.label+': '+val+' ('+pct+'%)';}}}},datalabels:{display:true,color:'#000',font:{weight:'bold',size:10}}}});
+
+  // New RFS por pipeline - UNA SOLA TABLA
+  const rfsDeals=ALL.filter(d=>inPeriod(d[F.rdySv]));
+  const pipeCnt={};
+  rfsDeals.forEach(d=>{ const n=PIPE_NAMES[d.pipeline_id]||('Pipeline '+d.pipeline_id); pipeCnt[n]=(pipeCnt[n]||0)+1; });
+  const pEntries=Object.entries(pipeCnt).sort((a,b)=>b[1]-a[1]);
+  const pMax=Math.max(...pEntries.map(e=>e[1]),1);
+  const pColors={'Survey':'#C326F9','E&G':'#FD5F2E','Installation':'#00D46B','Extension':'#1773F9','Live':'#065f46','Acquisition':'#FA1DBB','Net.Design':'#888780','Disaster':'#E24B4A'};
+  
+  // RFS por pipeline — panel dinámico que se actualiza con cada período
+  const rfsTotal=ALL.filter(d=>d[F.rdySv]).length;
+  const rfsHtml=(pEntries.length
+    ? pEntries.map(([n,v])=>`<div class="pdrow">
+        <span class="pdlbl">${n}</span>
+        <div class="pdtrack"><div class="pdfill" style="width:${Math.round(v/pMax*100)}%;background:${pColors[n]||'#888780'}"></div></div>
+        <span class="pdnum" style="color:${pColors[n]||'#888780'}">${v}</span>
+      </div>`).join('')
+    : `<div style="color:var(--muted);font-size:11px;padding:8px 0">Sin entradas en este periodo.</div>`);
+
+  // Update RFS panel — always re-render
+  let rfsPanel=document.getElementById('sv-rfs-panel');
+  if(!rfsPanel){
+    rfsPanel=document.createElement('div');
+    rfsPanel.className='panel';rfsPanel.id='sv-rfs-panel';
+    const svAvgPanel=document.getElementById('ch-sv-avg-rs-monthly')?.closest('.panel');
+    if(svAvgPanel) svAvgPanel.insertAdjacentElement('beforebegin',rfsPanel);
+    else document.getElementById('page-survey').appendChild(rfsPanel);
+  }
+  rfsPanel.innerHTML=`<div class="ph"><span class="pt">New Ready for Survey — Por Pipeline</span><span class="ps">${lbl} · <strong>${newRFS}</strong> período · <strong>${rfsTotal}</strong> total</span></div>${rfsHtml}`;
+
+  // Chart: Survey Requested → Scheduled avg days by month con números
+  const svRSByMonth=MONTHS_KEY.map(m=>{
+    const deals=ALL.filter(d=>inMonth(d[F.svReq],MONTHS_KEY.indexOf(m)));
+    return avgDays(deals,F.svReq,F.svSch);
+  });
+  const svRSMonthData=svRSByMonth.map(v=>v!=null?v:null);
+  mkChart('ch-sv-avg-rs-monthly',{type:'line',data:{labels:MONTH_LBL,datasets:[
+    {label:'Avg días SR → SS',data:svRSMonthData,borderColor:'#C326F9',backgroundColor:'rgba(195,38,249,0.1)',borderWidth:2.5,fill:true,pointRadius:6,pointBackgroundColor:'#C326F9',pointBorderColor:'#fff',pointBorderWidth:1.5,tension:0.3,spanGaps:true},
+  ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,labels:{font:{size:9},boxWidth:10,padding:8}}},scales:{x:{grid:{display:false},ticks:{font:{size:8},maxRotation:45}},y:{grid:{color:'#f0ede6'},ticks:{font:{size:9}},min:0}}}});
+}
+
+// ═══════════════════════════════════════════════════════
+// APPROVAL
+// ═══════════════════════════════════════════════════════
+function renderApproval(){
+  const lbl=getLabel();
+  document.getElementById('ap-badge').textContent=lbl;
+
+  const apC=cntP(ALL,F.apPart);
+  const tAp=periodMode==='w'?tgtW('approval'):tgtM('approval');
+  const apPer=ALL.filter(d=>inPeriod(d[F.apPart]));
+  const apChain=apPer.filter(isChain).length;
+  const apFranch=apPer.filter(isFranch).length;
+  const apIndep=apPer.filter(isIndep).length;
+
+  document.getElementById('ap-kpis').innerHTML=[
+    {l:'Account Approved',v:apC,t:tAp,c:'#1773F9'},
+    {l:'Chains',v:apChain,t:0,c:'#00D46B'},
+    {l:'Franchise',v:apFranch,t:0,c:'#FA1DBB'},
+    {l:'Independent',v:apIndep,t:0,c:'#FD5F2E'},
+  ].map(k=>`<div class="kc"><div class="kc-accent" style="background:${k.c}"></div>
+    <div class="kc-lbl">${k.l}</div>
+    <div class="kc-val" style="color:${k.c}">${k.v}</div>
+    ${k.t?`<div class="pmini"><div class="pmini-row"><span>tgt ${k.t}</span><span style="color:${pColor(pct(k.v,k.t))};font-weight:700">${pct(k.v,k.t)}%</span></div><div class="pmini-track"><div class="pmini-fill" style="width:${Math.min(pct(k.v,k.t),100)}%;background:${k.c}"></div></div></div>`:`<div class="kc-sub">periodo</div>`}
+  </div>`).join('');
+
+  // Chart: PA → Install avg days by month (hasta Marzo) con números - IGUAL A SURVEY
+  const apAvgByMonth=MONTHS_KEY.slice(0,3).map(m=>{
+    const mPer=ALL.filter(d=>inMonth(d[F.apPart],MONTHS_KEY.indexOf(m)));
+    return avgDays(mPer,F.apPart,F.inDep);
+  });
+  const apAvgMonthData=apAvgByMonth.map(v=>v!=null?v:null);
+  mkChart('ch-ap-avg-monthly',{type:'line',data:{labels:MONTH_LBL.slice(0,3),datasets:[
+    {label:'Avg días PA → Install',data:apAvgMonthData,borderColor:'#1773F9',backgroundColor:'rgba(23,115,249,0.1)',borderWidth:2.5,fill:true,pointRadius:6,pointBackgroundColor:'#1773F9',pointBorderColor:'#fff',pointBorderWidth:1.5,tension:0.3,spanGaps:true},
+  ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,labels:{font:{size:9},boxWidth:10,padding:8}},datalabels:{display:true,color:'#1773F9',font:{weight:'bold',size:10},offset:8}},scales:{x:{grid:{display:false},ticks:{font:{size:8},maxRotation:45}},y:{grid:{color:'#f0ede6'},ticks:{font:{size:9}},min:0}}}});
+
+  // Timing by landlord type — period filtered + all-time comparison with progress bars
+  const ll=[{t:'chain',l:'Chain',c:'#00D46B'},{t:'franchise',l:'Franchise',c:'#FA1DBB'},{t:'independent',l:'Independent',c:'#FD5F2E'}];
+  const llPer=ll.map(x=>({...x, per:apPer.filter(d=>landType(d).includes(x.t)), all:ALL.filter(d=>landType(d).includes(x.t)&&d[F.apPart]&&d[F.inDep])}));
+  const llVals=llPer.map(x=>({...x, v:avgDays(x.per,F.apPart,F.inDep), ytd:avgDays(x.all,F.apPart,F.inDep)}));
+  const mxVal=Math.max(...llVals.map(x=>Math.max(x.v||0,x.ytd||0)),1);
+
+  document.getElementById('ap-landlord-ps').textContent=`${lbl} vs YTD`;
+  document.getElementById('ap-landlord-body').innerHTML=llVals.map(x=>{
+    const diff=x.v!=null&&x.ytd!=null&&x.ytd>0?Math.round((x.v-x.ytd)/x.ytd*100):null;
+    return `<div style="margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
+        <span style="font-size:11px;font-weight:600">${x.l}</span>
+        <span style="font-size:16px;font-weight:900;color:${x.c}">${x.v!=null?x.v.toFixed(1)+'d':'–'} ${diff!==null?`<span style="font-size:9px;font-weight:700;padding:1px 5px;border-radius:8px;background:${diff>0?'#fee2e2':'#d1fae5'};color:${diff>0?'#7f1d1d':'#065f46'}">${diff>0?'▲':'▼'}${Math.abs(diff)}%</span>`:''}</span>
+      </div>
+      <div style="height:7px;background:#eee;border-radius:4px;overflow:hidden;margin-bottom:3px">
+        <div style="height:7px;border-radius:4px;background:${x.c};width:${x.v!=null?Math.round(x.v/mxVal*100):0}%"></div>
+      </div>
+      ${x.ytd!=null?`<div style="font-size:9px;color:var(--muted)">YTD avg: ${x.ytd.toFixed(1)}d · n=${x.all.length}</div>`:''}
+    </div>`;
+  }).join('');
+
+  // Top Chain Partners — filtrado por período (usando fecha de inDep)
+  const depDeals=ALL.filter(d=>d[F.inDep]&&isChain(d)&&inPeriod(d[F.inDep]));
+  const depTotal=depDeals.length||1;
+  const chainMap={};
+  depDeals.forEach(d=>{
+    const n=d.org_name||'Unknown';
+    if(!chainMap[n])chainMap[n]={count:0,timings:[]};
+    chainMap[n].count++;
+    const t=avgDays([d],F.apPart,F.inDep);
+    if(t!=null)chainMap[n].timings.push(t);
+  });
+  const chainEntries=Object.entries(chainMap).sort((a,b)=>b[1].count-a[1].count).slice(0,12);
+  document.getElementById('ap-chains-ps').textContent=`${chainEntries.length} top cadenas · ${depDeals.length} APMs instalados`;
+  document.getElementById('ap-chains-body').innerHTML=chainEntries.length
+    ?chainEntries.map(([name,data])=>{
+      const avgT=data.timings.length?(data.timings.reduce((a,b)=>a+b,0)/data.timings.length):null;
+      const pctN=Math.round(data.count/depTotal*100);
+      return `<tr><td style="font-weight:600">${name}</td>
+        <td style="font-weight:700;color:#1773F9">${data.count}</td>
+        <td><div style="display:flex;align-items:center;gap:6px"><div style="width:50px;height:4px;background:#eee;border-radius:2px"><div style="width:${Math.min(pctN*4,100)}%;height:4px;border-radius:2px;background:#1773F9"></div></div><span>${pctN}%</span></div></td>
+        <td style="color:${avgT!=null&&avgT>30?'#E24B4A':avgT!=null&&avgT>15?'#F0B429':'#00D46B'}">${avgT!=null?avgT.toFixed(1)+'d':'–'}</td>
+      </tr>`;
+    }).join('')
+    :`<tr><td colspan="4" style="padding:12px;color:var(--muted);font-size:11px">Sin datos de cadenas disponibles.</td></tr>`;
+
+  // Monthly detail
+  document.getElementById('ap-monthly').innerHTML=MONTHS_KEY.map((m,mi)=>{
+    const ap=byM(ALL,F.apPart,m);
+    const mPer=ALL.filter(d=>inMonth(d[F.apPart],mi));
+    const ch=mPer.filter(isChain).length;
+    const fr=mPer.filter(isFranch).length;
+    const ind=mPer.filter(isIndep).length;
+    const tApm=TGT_M.approval[mi]||0;
+    const avgM=avgDays(mPer,F.apPart,F.inDep);
+    return `<tr>
+      <td style="font-weight:700">${MONTH_LBL[mi]} 2026</td>
+      <td style="color:#1773F9;font-weight:700">${ap}</td><td>${tApm}</td><td>${pBadge(ap,tApm)}</td>
+      <td style="color:#00D46B">${ch}</td>
+      <td style="color:#FA1DBB">${fr}</td>
+      <td style="color:#FD5F2E">${ind}</td>
+      <td>${avgM!=null?avgM.toFixed(1)+' días':'–'}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ═══════════════════════════════════════════════════════
+// E&G
+// ═══════════════════════════════════════════════════════
+function renderEG(){
+  const lbl=getLabel();
+  document.getElementById('eg-badge').textContent=lbl;
+
+  const egC=cntP(ALL,F.egDone);
+  const egLost=ALL.filter(d=>d.status==='lost'&&inPeriod(d[F.egFail])).length;
+  const egReq=cntP(ALL,F.egReq);
+  const egSch=cntP(ALL,F.egSch);
+  const egFail=cntP(ALL,F.egFail);
+  const tEg=periodMode==='w'?tgtW('eg'):tgtM('eg');
+
+  document.getElementById('eg-kpis').innerHTML=[
+    {l:'E&G Completed',v:egC,t:tEg,c:'#FD5F2E'},
+    {l:'E&G Requested',v:egReq,t:0,c:'#888780'},
+    {l:'E&G Scheduled',v:egSch,t:0,c:'#1773F9'},
+    {l:'E&G Lost',v:egLost,t:0,c:'#E24B4A'},
+    {l:'E&G Failed',v:egFail,t:0,c:'#FA1DBB'},
+  ].map(k=>`<div class="kc"><div class="kc-accent" style="background:${k.c}"></div>
+    <div class="kc-lbl">${k.l}</div>
+    <div class="kc-val" style="color:${k.c}">${k.v}</div>
+    ${k.t?`<div class="pmini"><div class="pmini-row"><span>tgt ${k.t}</span><span style="color:${pColor(pct(k.v,k.t))};font-weight:700">${pct(k.v,k.t)}%</span></div><div class="pmini-track"><div class="pmini-fill" style="width:${Math.min(pct(k.v,k.t),100)}%;background:${k.c}"></div></div></div>`:`<div class="kc-sub">periodo</div>`}
+  </div>`).join('');
+
+  mkChart('ch-eg-full',{type:'bar',data:{labels:WEEKS,datasets:[
+    {label:'E&G Completed',data:WEEKS.map(w=>byW(ALL,F.egDone,w)),backgroundColor:'#FD5F2E',borderRadius:2,order:2},
+    {label:'Target',data:WEEKS.map(w=>TGT_W.eg[w]||0),type:'line',borderColor:'#FFCC05',backgroundColor:'transparent',borderWidth:2,borderDash:[4,3],pointRadius:0,order:1},
+  ]},options:barOpts()});
+
+  // E&G Providers — donut chart filtrado por período, top 6
+  const egAllDeals=ALL.filter(d=>d[F.egProv]&&d[F.egDone]);
+  const egPeriodDeals=ALL.filter(d=>inPeriod(d[F.egDone])&&d[F.egProv]);
+  const egProvCountsRaw={};
+  egPeriodDeals.forEach(d=>{const n=re(d[F.egProv])||'Unknown'; egProvCountsRaw[n]=(egProvCountsRaw[n]||0)+1;});
+  // Top 6 by count
+  const egTop6=Object.entries(egProvCountsRaw).sort((a,b)=>b[1]-a[1]).slice(0,6);
+  const egProvCounts=Object.fromEntries(egTop6);
+  const egProvLabels=egTop6.map(e=>e[0]);
+  const egProvData=egTop6.map(e=>e[1]);
+  const egProvTotal=egProvData.reduce((a,b)=>a+b,0)||1;
+  const egProvColors=['#1773F9','#FA1DBB','#00D46B','#FD5F2E','#C326F9','#F0B429'];
+  document.getElementById('eg-prov-ps').textContent=`${lbl} · ${egPeriodDeals.length} completados`;
+
+  const egDonutOpts={responsive:true,maintainAspectRatio:false,cutout:'60%',plugins:{legend:{display:false},tooltip:{callbacks:{label:function(ctx){return ctx.label+': '+ctx.parsed+' ('+Math.round(ctx.parsed/egProvTotal*100)+'%)';}}}}};
+  mkChart('ch-eg-prov',{type:'doughnut',data:{labels:egProvLabels,datasets:[{data:egProvData,backgroundColor:egProvColors.slice(0,egProvLabels.length),borderColor:'#fff',borderWidth:2}]},options:egDonutOpts});
+
+  // Leyenda manual sin SLA
+  document.getElementById('eg-prov-legend').innerHTML=egProvLabels.map((n,i)=>{
+    const pct2=Math.round((egProvCounts[n]||0)/egProvTotal*100);
+    return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+      <div style="width:10px;height:10px;border-radius:2px;background:${egProvColors[i]};flex-shrink:0"></div>
+      <span style="font-size:10px;flex:1;font-weight:600">${n}</span>
+      <span style="font-size:10px;color:var(--muted);font-weight:700">${egProvCounts[n]} <span style="font-weight:400">(${pct2}%)</span></span>
+    </div>`;
+  }).join('')||'<div style="color:var(--muted);font-size:11px">Sin datos en este período</div>';
+
+  // Chart: E&G Requested → Scheduled avg days by month
+  const egRSByMonth=MONTHS_KEY.map(m=>{
+    const deals=ALL.filter(d=>inMonth(d[F.egReq],MONTHS_KEY.indexOf(m)));
+    return avgDays(deals,F.egReq,F.egSch);
+  });
+  const egRSMonthData=egRSByMonth.map(v=>v!=null?v:null);
+  mkChart('ch-eg-avg-monthly',{type:'line',data:{labels:MONTH_LBL,datasets:[
+    {label:'Avg días E&G R → S',data:egRSMonthData,borderColor:'#FD5F2E',backgroundColor:'rgba(253,95,46,0.1)',borderWidth:2.5,fill:true,pointRadius:6,pointBackgroundColor:'#FD5F2E',pointBorderColor:'#fff',pointBorderWidth:1.5,tension:0.3,spanGaps:true},
+  ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,labels:{font:{size:9},boxWidth:10,padding:8}}},scales:{x:{grid:{display:false},ticks:{font:{size:8},maxRotation:45}},y:{grid:{color:'#f0ede6'},ticks:{font:{size:9}},min:0}}}});
+}
+
+// ═══════════════════════════════════════════════════════
+// INSTALLATION
+// ═══════════════════════════════════════════════════════
+function renderInstall(){
+  const lbl=getLabel();
+  document.getElementById('in-badge').textContent=lbl;
+
+  const inC=cntP(ALL,F.inDep);
+  const inPer=ALL.filter(d=>inPeriod(d[F.inDep]));
+  const inChain=inPer.filter(isChain).length;
+  const inFranch=inPer.filter(isFranch).length;
+  const inIndep=inPer.filter(isIndep).length;
+  const inIndoor=inPer.filter(isIndoor).length;
+  const inOutdoor=inPer.filter(isOutdoor).length;
+  const inSch=cntP(ALL,F.inSch);
+  const inRmv=cntP(ALL,F.inRmv);
+  const tIn=periodMode==='w'?tgtW('install'):tgtM('install');
+
+  document.getElementById('in-kpis').innerHTML=[
+    {l:'Deployments total',v:inC,t:tIn,c:'#00D46B'},
+    {l:'Chains',v:inChain,t:0,c:'#1773F9'},
+    {l:'Franchise',v:inFranch,t:0,c:'#FA1DBB'},
+    {l:'Independent',v:inIndep,t:0,c:'#FD5F2E'},
+    {l:'Removed',v:inRmv,t:0,c:'#E24B4A'},
+  ].map(k=>`<div class="kc"><div class="kc-accent" style="background:${k.c}"></div>
+    <div class="kc-lbl">${k.l}</div>
+    <div class="kc-val" style="color:${k.c}">${k.v}</div>
+    ${k.t?`<div class="pmini"><div class="pmini-row"><span>tgt ${k.t}</span><span style="color:${pColor(pct(k.v,k.t))};font-weight:700">${pct(k.v,k.t)}%</span></div><div class="pmini-track"><div class="pmini-fill" style="width:${Math.min(pct(k.v,k.t),100)}%;background:${k.c}"></div></div></div>`:`<div class="kc-sub">periodo</div>`}
+  </div>`).join('');
+
+  mkChart('ch-in-full',{type:'bar',data:{labels:WEEKS,datasets:[
+    {label:'Deployments',data:WEEKS.map(w=>byW(ALL,F.inDep,w)),backgroundColor:'#00D46B',borderRadius:2,order:2},
+    {label:'Target',data:WEEKS.map(w=>TGT_W.install[w]||0),type:'line',borderColor:'#FFCC05',backgroundColor:'transparent',borderWidth:2,borderDash:[4,3],pointRadius:0,order:1},
+  ]},options:barOpts()});
+
+  // Installation Providers — donut chart filtrado por período
+  const inAllDeals=ALL.filter(d=>d[F.inProv]&&d[F.inDep]);
+  const inPeriodDeals=ALL.filter(d=>inPeriod(d[F.inDep])&&d[F.inProv]);
+  const inProvCounts={};
+  inPeriodDeals.forEach(d=>{const n=re(d[F.inProv])||'Unknown'; inProvCounts[n]=(inProvCounts[n]||0)+1;});
+  const inProvLabels=Object.keys(inProvCounts);
+  const inProvData=Object.values(inProvCounts);
+  const inProvTotal=inProvData.reduce((a,b)=>a+b,0)||1;
+  const inProvColors=['#1773F9','#FA1DBB','#00D46B','#FD5F2E','#C326F9','#F0B429','#888780'];
+  document.getElementById('in-prov-ps').textContent=`${lbl} · ${inPeriodDeals.length} instalaciones`;
+
+  const inDonutOpts={responsive:true,maintainAspectRatio:false,cutout:'60%',plugins:{legend:{display:false},tooltip:{callbacks:{label:function(ctx){return ctx.label+': '+ctx.parsed+' ('+Math.round(ctx.parsed/inProvTotal*100)+'%)';}}}}};
+  mkChart('ch-in-prov',{type:'doughnut',data:{labels:inProvLabels,datasets:[{data:inProvData,backgroundColor:inProvColors.slice(0,inProvLabels.length),borderColor:'#fff',borderWidth:2}]},options:inDonutOpts});
+
+  // Leyenda manual sin SLA
+  document.getElementById('in-prov-legend').innerHTML=inProvLabels.map((n,i)=>{
+    const pct2=Math.round((inProvCounts[n]||0)/inProvTotal*100);
+    return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+      <div style="width:10px;height:10px;border-radius:2px;background:${inProvColors[i]};flex-shrink:0"></div>
+      <span style="font-size:10px;flex:1;font-weight:600">${n}</span>
+      <span style="font-size:10px;color:var(--muted);font-weight:700">${inProvCounts[n]} <span style="font-weight:400">(${pct2}%)</span></span>
+    </div>`;
+  }).join('')||'<div style="color:var(--muted);font-size:11px">Sin datos en este período</div>';
+
+  // Indoor / Outdoor — donut chart: período actual
+  const inIndoorAll=ALL.filter(d=>d[F.inDep]&&isIndoor(d)).length;
+  const inOutdoorAll=ALL.filter(d=>d[F.inDep]&&isOutdoor(d)).length;
+  const inIndoorPer=inPer.filter(isIndoor).length;
+  const inOutdoorPer=inPer.filter(isOutdoor).length;
+  const totalInPer=(inIndoorPer+inOutdoorPer)||1;
+  const totalInAll=(inIndoorAll+inOutdoorAll)||1;
+  document.getElementById('in-io-ps').textContent=`${lbl} · ${inC} desplegados`;
+
+  const ioDonutOpts={responsive:true,maintainAspectRatio:false,cutout:'60%',plugins:{legend:{display:false},tooltip:{callbacks:{label:function(ctx){return ctx.label+': '+ctx.parsed+' ('+Math.round(ctx.parsed/totalInPer*100)+'%)';}}}}};
+  mkChart('ch-in-indoor-outdoor',{type:'doughnut',data:{labels:['Indoor','Outdoor'],datasets:[{data:[inIndoorPer,inOutdoorPer],backgroundColor:['#1773F9','#FD5F2E'],borderColor:'#fff',borderWidth:2}]},options:ioDonutOpts});
+
+  document.getElementById('in-io-legend').innerHTML=[
+    {l:'Indoor',vPer:inIndoorPer,vAll:inIndoorAll,c:'#1773F9'},
+    {l:'Outdoor',vPer:inOutdoorPer,vAll:inOutdoorAll,c:'#FD5F2E'}
+  ].map(r=>`<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+    <div style="width:10px;height:10px;border-radius:2px;background:${r.c};flex-shrink:0"></div>
+    <span style="font-size:10px;flex:1;font-weight:600">${r.l}</span>
+    <span style="font-size:10px;font-weight:700;color:${r.c}">${r.vPer} <span style="font-size:9px;font-weight:400;color:var(--muted)">(${Math.round(r.vPer/totalInPer*100)}% período · ${r.vAll} total)</span></span>
+  </div>`).join('');
+
+  // Monthly detail
+  document.getElementById('in-monthly').innerHTML=MONTHS_KEY.map((m,mi)=>{
+    const dep=byM(ALL,F.inDep,m);
+    const mPer=ALL.filter(d=>inMonth(d[F.inDep],mi));
+    const ch=mPer.filter(isChain).length;
+    const fr=mPer.filter(isFranch).length;
+    const ind=mPer.filter(isIndep).length;
+    const indo=mPer.filter(isIndoor).length;
+    const out=mPer.filter(isOutdoor).length;
+    const sch=byM(ALL,F.inSch,m);
+    const rmv=byM(ALL,F.inRmv,m);
+    const ext=ALL.filter(d=>d.pipeline_id===17&&inMonth(d[F.inDep],mi)).length;
+    const liveNet=liveByMonth(m);
+    const tI=TGT_M.install[mi]||0;
+    return `<tr>
+      <td style="font-weight:700">${MONTH_LBL[mi]} 2026</td>
+      <td style="color:#1773F9">${ch}</td>
+      <td style="color:#FA1DBB">${fr}</td>
+      <td style="color:#FD5F2E">${ind}</td>
+      <td style="color:#00D46B;font-weight:700">${dep}</td>
+      <td>${tI}</td>
+      <td>${pBadge(dep,tI)}</td>
+      <td style="color:#1773F9">${indo}</td>
+      <td style="color:#FD5F2E">${out}</td>
+      <td style="color:#888780">${sch}</td>
+      <td style="color:${rmv>0?'#E24B4A':''}">${rmv||'–'}</td>
+      <td style="color:#1773F9">${ext||'–'}</td>
+      <td style="color:#065f46;font-weight:700">${liveNet}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ═══════════════════════════════════════════════════════
+// TIMINGS — periodo actual (NO YTD)
+// ═══════════════════════════════════════════════════════
+function renderTimings(){
+  const lbl=getLabel();
+  document.getElementById('tm-badge').textContent=lbl;
+  document.getElementById('tm-ps').textContent=lbl;
+
+  const svDeals=ALL.filter(d=>inPeriod(d[F.svReq])&&d[F.svSch]);
+  const egDeals=ALL.filter(d=>inPeriod(d[F.egReq])&&d[F.egSch]);
+  const apDeals=ALL.filter(d=>inPeriod(d[F.apPart])&&d[F.inDep]);
+
+  const svRS=avgDays(svDeals,F.svReq,F.svSch);
+  const svReqN=cntP(ALL,F.svReq);
+  const svSchN=cntP(ALL,F.svSch);
+  const svDoneN=cntP(ALL,F.svDone);
+
+  document.getElementById('tm-sv').innerHTML=[
+    {l:'SR → SS avg días',v:svRS!=null?svRS.toFixed(1):'–',u:'días',c:'#C326F9'},
+    {l:'Survey Requested',v:svReqN,u:'periodo',c:'#888780'},
+    {l:'Survey Scheduled',v:svSchN,u:'periodo',c:'#1773F9'},
+    {l:'Survey Completed',v:svDoneN,u:'periodo',c:'#00D46B'},
+  ].map(k=>`<div class="panel"><div class="time-lbl">${k.l}</div><div class="time-val" style="color:${k.c}">${k.v}</div><div class="time-unit">${k.u}</div></div>`).join('');
+
+  const egRS=avgDays(egDeals,F.egReq,F.egSch);
+  const egReqN=cntP(ALL,F.egReq);
+  const egSchN=cntP(ALL,F.egSch);
+  const egDoneN=cntP(ALL,F.egDone);
+
+  document.getElementById('tm-eg').innerHTML=[
+    {l:'E&G R → S avg días',v:egRS!=null?egRS.toFixed(1):'–',u:'días',c:'#FD5F2E'},
+    {l:'E&G Requested',v:egReqN,u:'periodo',c:'#888780'},
+    {l:'E&G Scheduled',v:egSchN,u:'periodo',c:'#1773F9'},
+    {l:'E&G Completed',v:egDoneN,u:'periodo',c:'#00D46B'},
+  ].map(k=>`<div class="panel"><div class="time-lbl">${k.l}</div><div class="time-val" style="color:${k.c}">${k.v}</div><div class="time-unit">${k.u}</div></div>`).join('');
+
+  const apAll=avgDays(apDeals,F.apPart,F.inDep);
+  const apChain=avgDays(apDeals.filter(isChain),F.apPart,F.inDep);
+  const apFranch=avgDays(apDeals.filter(isFranch),F.apPart,F.inDep);
+  const apIndep=avgDays(apDeals.filter(isIndep),F.apPart,F.inDep);
+
+  document.getElementById('tm-ap').innerHTML=[
+    {l:'PA → Install · Total',v:apAll!=null?apAll.toFixed(1):'–',u:'días',c:'#1773F9'},
+    {l:'PA → Install · Chain',v:apChain!=null?apChain.toFixed(1):'–',u:'días',c:'#00D46B'},
+    {l:'PA → Install · Franchise',v:apFranch!=null?apFranch.toFixed(1):'–',u:'días',c:'#FA1DBB'},
+    {l:'PA → Install · Independent',v:apIndep!=null?apIndep.toFixed(1):'–',u:'días',c:'#FD5F2E'},
+  ].map(k=>`<div class="panel"><div class="time-lbl">${k.l}</div><div class="time-val" style="color:${k.c}">${k.v}</div><div class="time-unit">${k.u}</div></div>`).join('');
+
+  const metrics=[
+    {l:'SR → SS',v:svRS||0,c:'#C326F9'},
+    {l:'E&G R → S',v:egRS||0,c:'#FD5F2E'},
+    {l:'PA→Install total',v:apAll||0,c:'#1773F9'},
+    {l:'PA→Install Chain',v:apChain||0,c:'#00D46B'},
+    {l:'PA→Install Franchise',v:apFranch||0,c:'#FA1DBB'},
+    {l:'PA→Install Ind.',v:apIndep||0,c:'#FD5F2E'},
+  ].filter(m=>m.v>0);
+  const mMax=Math.max(...metrics.map(m=>m.v),1);
+  document.getElementById('tm-bars').innerHTML=metrics.length
+    ? metrics.map(m=>`<div class="tgt-row">
+        <div class="tgt-lbl">${m.l}</div>
+        <div class="tgt-bars"><div class="tgt-bar-row">
+          <span class="tgt-bar-lbl">días avg</span>
+          <div class="tgt-bar-track"><div class="tgt-bar-fill" style="width:${Math.round(m.v/mMax*100)}%;background:${m.c}"></div></div>
+          <span class="tgt-bar-num" style="color:${m.c}">${m.v.toFixed(1)}d</span>
+        </div></div>
+      </div>`).join('')
+    : `<div style="color:var(--muted);font-size:11px;padding:8px">Sin suficientes datos en este periodo.</div>`;
+}
+
+// ═══════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════
+updateNav();
+</script>
+</body>
+</html>
