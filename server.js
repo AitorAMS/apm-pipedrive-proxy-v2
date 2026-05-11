@@ -1,8 +1,7 @@
 // ═══════════════════════════════════════════════════════
 // apm-pipedrive-proxy-v2 — server.js
-// Cache en disco (cache.json) → snapshot persistente.
-// Al arrancar: carga desde disco inmediatamente, luego
-// refresca desde Pipedrive y sobreescribe. Cada hora repite.
+// v3 — fix OOM: carga en serie + slim deals (solo campos necesarios)
+// Cache en disco (cache.json) → snapshot persistente entre reinicios.
 // ═══════════════════════════════════════════════════════
 const express = require('express');
 const fetch   = require('node-fetch');
@@ -29,45 +28,72 @@ const PIPELINE_STAGES = {
   17: [155, 157, 158, 159, 160, 172, 161, 162, 163, 164, 173, 165, 166, 168, 169, 170],
 };
 
+// Campos que usa el dashboard — descarta el resto para ahorrar RAM
+const KEEP_FIELDS = new Set([
+  'id', 'status', 'pipeline_id', 'stage_id', 'org_name',
+  '9b3b3995f1f726feaee7fdabbe6c7695ef7d7f09', // svDone
+  '67225c24d04109f7fa56373160b7efeb1ba7b857', // svReq
+  '5751376cbd3ce91828479ecd16f6ab3913b16f9e', // svSch
+  '4eeb6232a77052b8f0ad39c199ecf8f2ad0eaa50', // svProv
+  '7ac852e7f10486b93bbdf4a2a16dacc225eed886', // rdySv
+  '625c899d638cf47d9435ed048ab7383264b67771', // egDone
+  'ad7bee71b88f2813747efc61746be52aff2bac8b', // egReq
+  'f4b5f5248662fce649f697db0cd21dce984b93b4', // egSch
+  'b23e2d471253e5271d79b15c736b54d6fb769dd9', // egFail
+  '040eb4600ed2df829da452a308a2fdf27b76ddaa', // egProv
+  '8d746b4699d7c04a646436b0f1ae4d038b048ebd', // inDep
+  'aacf967fc363fbc73db37cc912b31a2fe343931a', // inSch
+  'fa25efa2dd60a8f4abe4af567d9d3cf5fbf6b978', // inRmv
+  'e6c9301c6c4c7751d212727024a1cfa507d13992', // inProv
+  '5dad53f6ffced67539def909f4329c14f37783b1', // apPart
+  '0cc4dfd4e72d45a5f0be9b48743a936cfe6c6a2b', // land
+  '2ddcd354da2bdf692cdbb531c10d410b248cc852', // apmSize
+  'b49c4d80d008ba209738f3bee0ed1fe548c5a4b4', // indoor
+  '4a4e30eb9d47fc061dea264544ccd5b6b86c08dd', // exDone
+]);
+
+function slimDeal(d) {
+  const slim = {};
+  for (const k of KEEP_FIELDS) {
+    if (k in d) slim[k] = d[k];
+  }
+  return slim;
+}
+
 // ── MIDDLEWARE ───────────────────────────────────────────
 app.use(cors());
 app.use(express.json());
 
-// ── CACHE STATE (en memoria) ──────────────────────────────
+// ── CACHE STATE ───────────────────────────────────────────
 let cache = {
   deals:     [],
   options:   {},
   cachedAt:  null,
-  snapshots: [],   // historial ligero de las últimas 24 cargas
+  snapshots: [],
 };
 let cacheInProgress = false;
 
 // ── SNAPSHOT HISTORY ─────────────────────────────────────
-// Cada carga guarda un snapshot ligero (conteos + timestamp)
-// para que el dashboard pueda mostrar evolución horaria.
 function addSnapshot(deals, ts) {
-  const snap = {
+  cache.snapshots.push({
     ts,
     totalDeals: deals.length,
     openDeals:  deals.filter(d => d.status === 'open').length,
     lostDeals:  deals.filter(d => d.status === 'lost').length,
-  };
-  cache.snapshots.push(snap);
-  // Mantiene solo las últimas 24 (= 24h a 1 carga/hora)
+  });
   if (cache.snapshots.length > 24) cache.snapshots.shift();
 }
 
-// ── DISCO: leer / escribir cache.json ────────────────────
+// ── DISCO ─────────────────────────────────────────────────
 function loadCacheFromDisk() {
   try {
     if (fs.existsSync(CACHE_FILE)) {
-      const raw  = fs.readFileSync(CACHE_FILE, 'utf8');
-      const data = JSON.parse(raw);
+      const data = JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8'));
       cache.deals     = data.deals     || [];
       cache.options   = data.options   || {};
       cache.cachedAt  = data.cachedAt  || null;
       cache.snapshots = data.snapshots || [];
-      console.log(`[cache] ✓ Snapshot cargado desde disco: ${cache.deals.length} deals · ${cache.cachedAt}`);
+      console.log(`[cache] ✓ Disco: ${cache.deals.length} deals · ${cache.cachedAt}`);
       return true;
     }
   } catch (err) {
@@ -84,9 +110,9 @@ function saveCacheToDisk() {
       cachedAt:  cache.cachedAt,
       snapshots: cache.snapshots,
     }), 'utf8');
-    console.log(`[cache] ✓ Snapshot guardado en disco · ${cache.deals.length} deals`);
+    console.log(`[cache] ✓ Guardado en disco · ${cache.deals.length} deals`);
   } catch (err) {
-    console.error('[cache] Error al guardar cache.json:', err.message);
+    console.error('[cache] Error guardando en disco:', err.message);
   }
 }
 
@@ -105,7 +131,7 @@ async function fetchByStatus(id, status, token) {
     page++;
     const d = await pdGet(`/pipelines/${id}/deals?limit=500&start=${start}&status=${status}`, token);
     const b = d.data || [];
-    all = all.concat(b);
+    all = all.concat(b.map(slimDeal)); // slim inmediatamente al recibir
     if (!d.additional_data?.pagination?.more_items_in_collection || b.length === 0) break;
     start += b.length;
     if (page > 50) break;
@@ -121,7 +147,7 @@ async function fetchByStages(stages, status, token) {
       page++;
       const d = await pdGet(`/deals?limit=500&start=${start}&stage_id=${sid}&status=${status}`, token);
       const b = d.data || [];
-      all = all.concat(b);
+      all = all.concat(b.map(slimDeal)); // slim inmediatamente
       if (!d.additional_data?.pagination?.more_items_in_collection || b.length === 0) break;
       start += b.length;
       if (page > 50) break;
@@ -132,10 +158,9 @@ async function fetchByStages(stages, status, token) {
 
 async function fetchPipe(id, token) {
   const stages = PIPELINE_STAGES[id] || [];
-  const [open, lost] = await Promise.all([
-    fetchByStatus(id, 'open', token),
-    fetchByStages(stages, 'lost', token),
-  ]);
+  // SERIE en vez de Promise.all — evita pico de RAM simultáneo
+  const open = await fetchByStatus(id, 'open', token);
+  const lost = await fetchByStages(stages, 'lost', token);
   const seen = new Set();
   return [...open, ...lost].filter(d => {
     if (seen.has(d.id)) return false;
@@ -147,10 +172,9 @@ async function fetchPipe(id, token) {
 // ── REFRESH PRINCIPAL ─────────────────────────────────────
 async function refreshCache(token) {
   if (cacheInProgress) {
-    console.log('[cache] Ya hay una carga en curso, skip.');
+    console.log('[cache] Carga ya en curso, skip.');
     return;
   }
-
   const t = token || API_TOKEN;
   if (!t) {
     console.warn('[cache] Sin token. Configura PIPEDRIVE_TOKEN en Render → Environment.');
@@ -158,10 +182,10 @@ async function refreshCache(token) {
   }
 
   cacheInProgress = true;
-  console.log('[cache] Iniciando refresh desde Pipedrive…', new Date().toISOString());
+  console.log('[cache] Iniciando refresh…', new Date().toISOString());
 
   try {
-    // 1. Deal fields (enums / opciones)
+    // 1. Deal fields
     const fieldsResp = await pdGet('/dealFields?limit=500', t);
     const options = {};
     (fieldsResp.data || []).forEach(f =>
@@ -171,61 +195,53 @@ async function refreshCache(token) {
       })
     );
 
-    // 2. Todos los pipelines en paralelo
-    const results = await Promise.all(APM_IDS.map(id => fetchPipe(id, t)));
-
-    // 3. Deduplicar
+    // 2. Pipelines en SERIE — un pipeline a la vez para controlar RAM
+    const allDeals = [];
     const seen = new Set();
-    const allDeals = results.flat().filter(d => {
-      if (seen.has(d.id)) return false;
-      seen.add(d.id);
-      return true;
-    });
+    for (const id of APM_IDS) {
+      console.log(`[cache] Pipeline ${id}…`);
+      const deals = await fetchPipe(id, t);
+      for (const d of deals) {
+        if (!seen.has(d.id)) { seen.add(d.id); allDeals.push(d); }
+      }
+      console.log(`[cache] Pipeline ${id} OK · ${deals.length} · total: ${allDeals.length}`);
+    }
 
     const ts = new Date().toISOString();
-
-    // 4. Actualizar memoria
     cache.deals    = allDeals;
     cache.options  = options;
     cache.cachedAt = ts;
 
-    // 5. Guardar snapshot horario en el historial
     addSnapshot(allDeals, ts);
-
-    // 6. Persistir todo en disco (sobrevive a reinicios de Render)
     saveCacheToDisk();
 
-    console.log(`[cache] ✓ Refresh completado: ${allDeals.length} deals · ${ts}`);
+    console.log(`[cache] ✓ Completado: ${allDeals.length} deals · ${ts}`);
   } catch (err) {
     console.error('[cache] Error en refresh:', err.message);
-    // Mantiene el cache anterior — el dashboard sigue funcionando
+    // Cache anterior sigue siendo válido
   } finally {
     cacheInProgress = false;
   }
 }
 
 // ── ARRANQUE ──────────────────────────────────────────────
-// Paso 1: carga instantánea desde disco si existe snapshot previo
-loadCacheFromDisk();
+loadCacheFromDisk(); // instantáneo desde disco si existe
 
-// Paso 2: refresca desde Pipedrive en background (no bloquea el servidor)
 if (API_TOKEN) {
-  refreshCache();
-  setInterval(() => refreshCache(), REFRESH_MS);
+  refreshCache();                              // primera carga en background
+  setInterval(() => refreshCache(), REFRESH_MS); // cada hora
 } else {
-  console.warn('[cache] PIPEDRIVE_TOKEN no configurado en variables de entorno.');
-  console.warn('[cache] El cache se actualizará al recibir POST /cache/refresh con el token en el header.');
+  console.warn('[cache] PIPEDRIVE_TOKEN no configurado.');
 }
 
 // ══════════════════════════════════════════════════════════
 // ENDPOINTS
 // ══════════════════════════════════════════════════════════
 
-// GET /cache — devuelve el JSON completo al dashboard (<100ms)
 app.get('/cache', (req, res) => {
   if (!cache.cachedAt) {
     return res.status(503).json({
-      error: 'Cache todavía no disponible. El servidor acaba de arrancar, espera ~30s.',
+      error: 'Cache no disponible aún. Espera ~2 minutos al primer arranque.',
       cachedAt: null,
     });
   }
@@ -237,7 +253,6 @@ app.get('/cache', (req, res) => {
   });
 });
 
-// GET /cache/meta — info rápida sin enviar los deals
 app.get('/cache/meta', (req, res) => {
   res.json({
     ready:         !!cache.cachedAt,
@@ -249,23 +264,13 @@ app.get('/cache/meta', (req, res) => {
   });
 });
 
-// POST /cache/refresh — fuerza recarga manual
-// Úsalo también como Cron Job en Render: schedule 0 * * * *
-// Command: curl -X POST https://<tu-proxy>.onrender.com/cache/refresh
 app.post('/cache/refresh', async (req, res) => {
   const token = req.headers['x-pipedrive-token'] || API_TOKEN;
-  if (!token) {
-    return res.status(400).json({ error: 'Sin token. Envía x-pipedrive-token en el header o configura PIPEDRIVE_TOKEN.' });
-  }
-  refreshCache(token); // background
-  res.json({
-    ok:               true,
-    message:          'Refresh iniciado en background (~30s).',
-    previousCachedAt: cache.cachedAt,
-  });
+  if (!token) return res.status(400).json({ error: 'Sin token.' });
+  refreshCache(token);
+  res.json({ ok: true, message: 'Refresh iniciado (~2 min).', previousCachedAt: cache.cachedAt });
 });
 
-// GET /health
 app.get('/health', (req, res) => {
   res.json({
     ok:            true,
@@ -277,7 +282,7 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Proxy legacy /pipedrive/* — mantiene compatibilidad
+// Proxy legacy
 app.use('/pipedrive', async (req, res) => {
   try {
     const token = req.headers['x-pipedrive-token'] || API_TOKEN;
@@ -292,9 +297,7 @@ app.use('/pipedrive', async (req, res) => {
   }
 });
 
-// ── START ─────────────────────────────────────────────────
 app.listen(PORT, () => {
-  console.log(`[server] Puerto ${PORT}`);
-  console.log(`[server] Snapshot en disco: ${CACHE_FILE}`);
-  console.log(`[server] Refresh automático cada ${REFRESH_MS / 60000} minutos`);
+  console.log(`[server] Puerto ${PORT} · Render free tier optimizado`);
+  console.log(`[server] Disco: ${CACHE_FILE} · Refresh cada ${REFRESH_MS / 60000} min`);
 });
