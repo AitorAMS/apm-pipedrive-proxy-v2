@@ -1,290 +1,300 @@
+// ═══════════════════════════════════════════════════════
+// apm-pipedrive-proxy-v2 — server.js
+// Cache en disco (cache.json) → snapshot persistente.
+// Al arrancar: carga desde disco inmediatamente, luego
+// refresca desde Pipedrive y sobreescribe. Cada hora repite.
+// ═══════════════════════════════════════════════════════
 const express = require('express');
-const cors = require('cors');
-require('dotenv').config();
+const fetch   = require('node-fetch');
+const cors    = require('cors');
+const fs      = require('fs');
+const path    = require('path');
 
-const app = express();
+const app  = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(cors({
-  origin: '*',
-  methods: ['GET', 'POST', 'OPTIONS'],
-  credentials: true
-}));
+// ── CONFIG ───────────────────────────────────────────────
+const PIPEDRIVE_BASE = 'https://api.pipedrive.com/v1';
+const API_TOKEN      = process.env.PIPEDRIVE_TOKEN || '';
+const CACHE_FILE     = path.join(__dirname, 'cache.json');
+const REFRESH_MS     = 60 * 60 * 1000; // 1 hora
 
+const APM_IDS = [2, 3, 4, 9, 13, 17];
+const PIPELINE_STAGES = {
+  2:  [116, 62, 46, 6, 33, 154, 70, 32, 9],
+  3:  [171, 76, 117, 47, 77, 13],
+  4:  [15, 71, 96, 49, 16],
+  9:  [104, 66, 64, 105, 67, 68, 153],
+  13: [137, 128, 127, 129, 175, 130],
+  17: [155, 157, 158, 159, 160, 172, 161, 162, 163, 164, 173, 165, 166, 168, 169, 170],
+};
+
+// ── MIDDLEWARE ───────────────────────────────────────────
+app.use(cors());
 app.use(express.json());
-app.use(express.static('public'));
 
-const PIPEDRIVE_API_KEY = process.env.PIPEDRIVE_API_KEY;
-const PIPEDRIVE_BASE_URL = 'https://api.pipedrive.com/v1';
-const HUBSPOT_API_KEY = process.env.HUBSPOT_API_KEY;
-const HUBSPOT_BASE_URL = 'https://api.hubapi.com';
+// ── CACHE STATE (en memoria) ──────────────────────────────
+let cache = {
+  deals:     [],
+  options:   {},
+  cachedAt:  null,
+  snapshots: [],   // historial ligero de las últimas 24 cargas
+};
+let cacheInProgress = false;
 
-if (!PIPEDRIVE_API_KEY) console.warn('⚠️ PIPEDRIVE_API_KEY no está configurada');
-if (!HUBSPOT_API_KEY) console.warn('⚠️ HUBSPOT_API_KEY no está configurada');
+// ── SNAPSHOT HISTORY ─────────────────────────────────────
+// Cada carga guarda un snapshot ligero (conteos + timestamp)
+// para que el dashboard pueda mostrar evolución horaria.
+function addSnapshot(deals, ts) {
+  const snap = {
+    ts,
+    totalDeals: deals.length,
+    openDeals:  deals.filter(d => d.status === 'open').length,
+    lostDeals:  deals.filter(d => d.status === 'lost').length,
+  };
+  cache.snapshots.push(snap);
+  // Mantiene solo las últimas 24 (= 24h a 1 carga/hora)
+  if (cache.snapshots.length > 24) cache.snapshots.shift();
+}
 
-async function pipedriveRequest(endpoint, options = {}) {
-  const url = `${PIPEDRIVE_BASE_URL}${endpoint}${endpoint.includes('?') ? '&' : '?'}api_token=${PIPEDRIVE_API_KEY}`;
+// ── DISCO: leer / escribir cache.json ────────────────────
+function loadCacheFromDisk() {
   try {
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json', ...options.headers }
-    });
-    if (!response.ok) throw new Error(`Pipedrive HTTP ${response.status}`);
-    return await response.json();
-  } catch (error) {
-    console.error(`❌ Pipedrive request failed: ${endpoint}`, error.message);
-    throw error;
+    if (fs.existsSync(CACHE_FILE)) {
+      const raw  = fs.readFileSync(CACHE_FILE, 'utf8');
+      const data = JSON.parse(raw);
+      cache.deals     = data.deals     || [];
+      cache.options   = data.options   || {};
+      cache.cachedAt  = data.cachedAt  || null;
+      cache.snapshots = data.snapshots || [];
+      console.log(`[cache] ✓ Snapshot cargado desde disco: ${cache.deals.length} deals · ${cache.cachedAt}`);
+      return true;
+    }
+  } catch (err) {
+    console.warn('[cache] No se pudo leer cache.json:', err.message);
+  }
+  return false;
+}
+
+function saveCacheToDisk() {
+  try {
+    fs.writeFileSync(CACHE_FILE, JSON.stringify({
+      deals:     cache.deals,
+      options:   cache.options,
+      cachedAt:  cache.cachedAt,
+      snapshots: cache.snapshots,
+    }), 'utf8');
+    console.log(`[cache] ✓ Snapshot guardado en disco · ${cache.deals.length} deals`);
+  } catch (err) {
+    console.error('[cache] Error al guardar cache.json:', err.message);
   }
 }
 
-// ✅ Fetch deals by individual STAGE ID — bypasses pipeline filter issues
-async function hubspotFetchByStage(stageId, properties) {
-  const deals = [];
-  let after = undefined;
-  let page = 0;
+// ── PIPEDRIVE HELPERS ─────────────────────────────────────
+async function pdGet(urlPath, token) {
+  const sep = urlPath.includes('?') ? '&' : '?';
+  const url = `${PIPEDRIVE_BASE}${urlPath}${sep}api_token=${token}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Pipedrive ${res.status}: ${urlPath}`);
+  return res.json();
+}
 
-  while (page < 100) {
+async function fetchByStatus(id, status, token) {
+  let all = [], start = 0, page = 0;
+  while (true) {
     page++;
-    const body = {
-      filterGroups: [{
-        filters: [{
-          propertyName: 'dealstage',
-          operator: 'EQ',
-          value: stageId
-        }]
-      }],
-      properties,
-      limit: 100,
-      ...(after ? { after } : {})
-    };
-
-    const response = await fetch(`${HUBSPOT_BASE_URL}/crm/v3/objects/deals/search`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${HUBSPOT_API_KEY}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(body)
-    });
-
-    if (!response.ok) throw new Error(`HubSpot HTTP ${response.status}`);
-    const data = await response.json();
-
-    if (data.results) deals.push(...data.results);
-    if (!data.paging?.next?.after) break;
-    after = data.paging.next.after;
+    const d = await pdGet(`/pipelines/${id}/deals?limit=500&start=${start}&status=${status}`, token);
+    const b = d.data || [];
+    all = all.concat(b);
+    if (!d.additional_data?.pagination?.more_items_in_collection || b.length === 0) break;
+    start += b.length;
+    if (page > 50) break;
   }
-
-  return deals;
+  return all;
 }
 
-app.get('/api/health', (req, res) => {
+async function fetchByStages(stages, status, token) {
+  let all = [];
+  for (const sid of stages) {
+    let start = 0, page = 0;
+    while (true) {
+      page++;
+      const d = await pdGet(`/deals?limit=500&start=${start}&stage_id=${sid}&status=${status}`, token);
+      const b = d.data || [];
+      all = all.concat(b);
+      if (!d.additional_data?.pagination?.more_items_in_collection || b.length === 0) break;
+      start += b.length;
+      if (page > 50) break;
+    }
+  }
+  return all;
+}
+
+async function fetchPipe(id, token) {
+  const stages = PIPELINE_STAGES[id] || [];
+  const [open, lost] = await Promise.all([
+    fetchByStatus(id, 'open', token),
+    fetchByStages(stages, 'lost', token),
+  ]);
+  const seen = new Set();
+  return [...open, ...lost].filter(d => {
+    if (seen.has(d.id)) return false;
+    seen.add(d.id);
+    return true;
+  });
+}
+
+// ── REFRESH PRINCIPAL ─────────────────────────────────────
+async function refreshCache(token) {
+  if (cacheInProgress) {
+    console.log('[cache] Ya hay una carga en curso, skip.');
+    return;
+  }
+
+  const t = token || API_TOKEN;
+  if (!t) {
+    console.warn('[cache] Sin token. Configura PIPEDRIVE_TOKEN en Render → Environment.');
+    return;
+  }
+
+  cacheInProgress = true;
+  console.log('[cache] Iniciando refresh desde Pipedrive…', new Date().toISOString());
+
+  try {
+    // 1. Deal fields (enums / opciones)
+    const fieldsResp = await pdGet('/dealFields?limit=500', t);
+    const options = {};
+    (fieldsResp.data || []).forEach(f =>
+      (f.options || []).forEach(o => {
+        options[o.id]         = o.label;
+        options[String(o.id)] = o.label;
+      })
+    );
+
+    // 2. Todos los pipelines en paralelo
+    const results = await Promise.all(APM_IDS.map(id => fetchPipe(id, t)));
+
+    // 3. Deduplicar
+    const seen = new Set();
+    const allDeals = results.flat().filter(d => {
+      if (seen.has(d.id)) return false;
+      seen.add(d.id);
+      return true;
+    });
+
+    const ts = new Date().toISOString();
+
+    // 4. Actualizar memoria
+    cache.deals    = allDeals;
+    cache.options  = options;
+    cache.cachedAt = ts;
+
+    // 5. Guardar snapshot horario en el historial
+    addSnapshot(allDeals, ts);
+
+    // 6. Persistir todo en disco (sobrevive a reinicios de Render)
+    saveCacheToDisk();
+
+    console.log(`[cache] ✓ Refresh completado: ${allDeals.length} deals · ${ts}`);
+  } catch (err) {
+    console.error('[cache] Error en refresh:', err.message);
+    // Mantiene el cache anterior — el dashboard sigue funcionando
+  } finally {
+    cacheInProgress = false;
+  }
+}
+
+// ── ARRANQUE ──────────────────────────────────────────────
+// Paso 1: carga instantánea desde disco si existe snapshot previo
+loadCacheFromDisk();
+
+// Paso 2: refresca desde Pipedrive en background (no bloquea el servidor)
+if (API_TOKEN) {
+  refreshCache();
+  setInterval(() => refreshCache(), REFRESH_MS);
+} else {
+  console.warn('[cache] PIPEDRIVE_TOKEN no configurado en variables de entorno.');
+  console.warn('[cache] El cache se actualizará al recibir POST /cache/refresh con el token en el header.');
+}
+
+// ══════════════════════════════════════════════════════════
+// ENDPOINTS
+// ══════════════════════════════════════════════════════════
+
+// GET /cache — devuelve el JSON completo al dashboard (<100ms)
+app.get('/cache', (req, res) => {
+  if (!cache.cachedAt) {
+    return res.status(503).json({
+      error: 'Cache todavía no disponible. El servidor acaba de arrancar, espera ~30s.',
+      cachedAt: null,
+    });
+  }
   res.json({
-    status: 'ok',
-    server: 'APM Pipedrive Proxy',
-    timestamp: new Date().toISOString(),
-    apis: {
-      pipedrive: PIPEDRIVE_API_KEY ? '🟢 configured' : '🔴 missing key',
-      hubspot: HUBSPOT_API_KEY ? '🟢 configured' : '🔴 missing key'
-    }
+    deals:     cache.deals,
+    options:   cache.options,
+    cachedAt:  cache.cachedAt,
+    snapshots: cache.snapshots,
   });
 });
 
-app.get('/api/pipedrive', async (req, res) => {
-  try {
-    if (!PIPEDRIVE_API_KEY) {
-      return res.status(401).json({ error: 'PIPEDRIVE_API_KEY not configured' });
-    }
-
-    const apmPipelines = [1, 2, 3, 4, 8, 9, 13, 17];
-    const allDeals = [];
-
-    for (const pipelineId of apmPipelines) {
-      try {
-        const data = await pipedriveRequest(`/pipelines/${pipelineId}/deals?limit=500&status=open`);
-        if (data.success && data.data) allDeals.push(...data.data);
-      } catch (e) {
-        console.warn(`⚠️ Could not fetch pipeline ${pipelineId}:`, e.message);
-      }
-    }
-
-    const fieldsData = await pipedriveRequest('/dealFields?limit=500');
-    const fieldMap = {};
-    if (fieldsData.success && fieldsData.data) {
-      fieldsData.data.forEach(field => {
-        if (field.options) {
-          field.options.forEach(opt => { fieldMap[opt.id] = opt.label; });
-        }
-      });
-    }
-
-    res.json({
-      success: true,
-      summary: { totalDeals: allDeals.length, pipelines: apmPipelines.length, timestamp: new Date().toISOString() },
-      deals: allDeals,
-      fieldMap
-    });
-
-  } catch (error) {
-    console.error('❌ /api/pipedrive error:', error.message);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// ═══════════════════════════════════════════════════════
-// 📊 /api/hubspot — filtra por stage ID (más fiable)
-// ═══════════════════════════════════════════════════════
-app.get('/api/hubspot', async (req, res) => {
-  try {
-    if (!HUBSPOT_API_KEY) {
-      return res.status(401).json({ error: 'HUBSPOT_API_KEY not configured' });
-    }
-
-    const IBERIA_PIPELINES = [
-      {
-        id: '821946550',
-        name: 'IBERIA: ENTERPRISE',
-        stages: [
-          '1217112747','1217112748','1288966436','1217112749',
-          '1217112750','1217112751','1217112752',
-          '1217112753','1217112754'
-        ]
-      },
-      {
-        id: '822050313',
-        name: 'IBERIA: FIELD TEAM',
-        stages: [
-          '1217117009','1217117010','1217117011','1217117012',
-          '1217117013','1217117014','1217117015','1217117016'
-        ]
-      },
-      {
-        id: '807042859',
-        name: 'IBERIA: LAS APMs',
-        stages: [
-          '1188103598','1188103599','1188103600',
-          '1188103601','1188103602','1188019859','1188103604'
-        ]
-      },
-    ];
-
-    const PROPERTIES = [
-      'dealname', 'dealstage', 'pipeline',
-      'createdate', 'closedate', 'hs_lastmodifieddate',
-      'amount', 'closed_lost_reason', 'num_associated_contacts',
-      'hubspot_owner_id', 'hs_deal_stage_probability',
-      'ib_net__no_locations',
-      // Aging — ENTERPRISE
-      'hs_date_entered_1288966436','hs_date_entered_1217112747',
-      'hs_date_entered_1217112748','hs_date_entered_1217112749',
-      'hs_date_entered_1217112750','hs_date_entered_1217112751',
-      'hs_date_entered_1217112752','hs_date_entered_1217112753',
-      'hs_date_entered_1217112754',
-      // Aging — FIELD TEAM
-      'hs_date_entered_1217117009','hs_date_entered_1217117010',
-      'hs_date_entered_1217117011','hs_date_entered_1217117012',
-      'hs_date_entered_1217117013','hs_date_entered_1217117014',
-      'hs_date_entered_1217117015','hs_date_entered_1217117016',
-      // Aging — LAS APMs
-      'hs_date_entered_1188103598','hs_date_entered_1188103599',
-      'hs_date_entered_1188103600','hs_date_entered_1188103601',
-      'hs_date_entered_1188103602','hs_date_entered_1188019859',
-      'hs_date_entered_1188103604',
-    ];
-
-    const allDeals = [];
-    const seen = new Set(); // evitar duplicados entre stages
-
-    for (const pipe of IBERIA_PIPELINES) {
-      let pipeCount = 0;
-
-      for (const stageId of pipe.stages) {
-        try {
-          const stageDeals = await hubspotFetchByStage(stageId, PROPERTIES);
-          for (const deal of stageDeals) {
-            if (!seen.has(deal.id)) {
-              seen.add(deal.id);
-              deal._pipelineName = pipe.name;
-              allDeals.push(deal);
-              pipeCount++;
-            }
-          }
-          console.log(`  stage ${stageId}: ${stageDeals.length} deals`);
-        } catch (e) {
-          console.warn(`⚠️ Error stage ${stageId}:`, e.message);
-        }
-      }
-
-      console.log(`✅ ${pipe.name}: ${pipeCount} deals total`);
-    }
-
-    res.json({
-      success: true,
-      summary: {
-        totalDeals: allDeals.length,
-        pipelines: IBERIA_PIPELINES.map(p => p.name),
-        timestamp: new Date().toISOString()
-      },
-      deals: allDeals
-    });
-
-  } catch (error) {
-    console.error('❌ /api/hubspot error:', error.message);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.get('/pipedrive/*', async (req, res) => {
-  try {
-    if (!PIPEDRIVE_API_KEY) return res.status(401).json({ error: 'PIPEDRIVE_API_KEY not configured' });
-    const path = req.params[0];
-    const queryString = Object.keys(req.query).length > 0 ? '&' + new URLSearchParams(req.query).toString() : '';
-    const url = `${PIPEDRIVE_BASE_URL}/${path}?api_token=${PIPEDRIVE_API_KEY}${queryString}`;
-    const response = await fetch(url);
-    res.json(await response.json());
-  } catch (error) {
-    console.error('❌ /pipedrive proxy error:', error.message);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.get('/hubspot/*', async (req, res) => {
-  try {
-    if (!HUBSPOT_API_KEY) return res.status(401).json({ error: 'HUBSPOT_API_KEY not configured' });
-    const path = req.params[0];
-    const queryString = Object.keys(req.query).length > 0 ? '?' + new URLSearchParams(req.query).toString() : '';
-    const url = `${HUBSPOT_BASE_URL}/${path}${queryString}`;
-    const response = await fetch(url, {
-      headers: { 'Authorization': `Bearer ${HUBSPOT_API_KEY}`, 'Content-Type': 'application/json' }
-    });
-    res.json(await response.json());
-  } catch (error) {
-    console.error('❌ /hubspot proxy error:', error.message);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.use((req, res) => {
-  res.status(404).json({
-    error: 'Endpoint not found',
-    path: req.path,
-    availableEndpoints: ['GET /api/health','GET /api/pipedrive','GET /api/hubspot','GET /pipedrive/*','GET /hubspot/*']
+// GET /cache/meta — info rápida sin enviar los deals
+app.get('/cache/meta', (req, res) => {
+  res.json({
+    ready:         !!cache.cachedAt,
+    cachedAt:      cache.cachedAt,
+    dealCount:     cache.deals.length,
+    inProgress:    cacheInProgress,
+    snapshots:     cache.snapshots,
+    snapshotCount: cache.snapshots.length,
   });
 });
 
+// POST /cache/refresh — fuerza recarga manual
+// Úsalo también como Cron Job en Render: schedule 0 * * * *
+// Command: curl -X POST https://<tu-proxy>.onrender.com/cache/refresh
+app.post('/cache/refresh', async (req, res) => {
+  const token = req.headers['x-pipedrive-token'] || API_TOKEN;
+  if (!token) {
+    return res.status(400).json({ error: 'Sin token. Envía x-pipedrive-token en el header o configura PIPEDRIVE_TOKEN.' });
+  }
+  refreshCache(token); // background
+  res.json({
+    ok:               true,
+    message:          'Refresh iniciado en background (~30s).',
+    previousCachedAt: cache.cachedAt,
+  });
+});
+
+// GET /health
+app.get('/health', (req, res) => {
+  res.json({
+    ok:            true,
+    cachedAt:      cache.cachedAt,
+    dealCount:     cache.deals.length,
+    inProgress:    cacheInProgress,
+    snapshotCount: cache.snapshots.length,
+    diskSnapshot:  fs.existsSync(CACHE_FILE),
+  });
+});
+
+// Proxy legacy /pipedrive/* — mantiene compatibilidad
+app.use('/pipedrive', async (req, res) => {
+  try {
+    const token = req.headers['x-pipedrive-token'] || API_TOKEN;
+    if (!token) return res.status(401).json({ error: 'Sin token' });
+    const sep = req.url.includes('?') ? '&' : '?';
+    const url = `${PIPEDRIVE_BASE}${req.url}${sep}api_token=${token}`;
+    const upstream = await fetch(url, { method: req.method });
+    const data = await upstream.json();
+    res.status(upstream.status).json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── START ─────────────────────────────────────────────────
 app.listen(PORT, () => {
-  console.log(`
-╔════════════════════════════════════════════════════════════╗
-║  APM Pipedrive Proxy - Dashboard API Server                ║
-╠════════════════════════════════════════════════════════════╣
-║  🚀 Running on port ${PORT}
-║  📡 Pipedrive: ${PIPEDRIVE_API_KEY ? '✅ Configured' : '❌ Missing key'}
-║  📊 HubSpot:   ${HUBSPOT_API_KEY ? '✅ Configured' : '❌ Missing key'}
-║  🔵 Iberia: Enterprise · Field Team · LAS APMs            ║
-╠════════════════════════════════════════════════════════════╣
-║  Filtra por stage ID — más fiable que pipeline filter     ║
-╚════════════════════════════════════════════════════════════╝
-  `);
+  console.log(`[server] Puerto ${PORT}`);
+  console.log(`[server] Snapshot en disco: ${CACHE_FILE}`);
+  console.log(`[server] Refresh automático cada ${REFRESH_MS / 60000} minutos`);
 });
-
-module.exports = app;
