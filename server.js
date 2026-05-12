@@ -50,6 +50,14 @@ const KEEP_FIELDS = new Set([
   '2ddcd354da2bdf692cdbb531c10d410b248cc852', // apmSize
   'b49c4d80d008ba209738f3bee0ed1fe548c5a4b4', // indoor
   '4a4e30eb9d47fc061dea264544ccd5b6b86c08dd', // exDone
+  // E&G Failed
+  'c9502042f1793272165bc8c8572ddf04a5a2d365', // egFailCost  (O - Failed E&G cost)
+  '7254e38ccd212a6313ce6f7e6345625f6d7f20c1', // egFailReason (O - Failed reason)
+  // E&G Maintenance
+  '296b5f1ba07ef3d9d24b1f752380226cbab7f8ff', // maintDate   (O - Maintenance E&G date)
+  'cfe6ea18269d4be7d11545237bc374db3d11880c', // maintCost   (O - Maintenance E&G cost)
+  '81d7843d092ea9738224f183c54412fba4a8a338', // maintReason (O- Maintenance reason)
+  '686fd00ca07c3039836ba0755f0f32426474fae6', // maintProv   (O - Maintenance E&G Provider)
 ]);
 
 function slimDeal(d) {
@@ -61,13 +69,7 @@ function slimDeal(d) {
 }
 
 // ── MIDDLEWARE ───────────────────────────────────────────
-app.use(cors({
-  origin: [
-    'https://aitorams.github.io',
-    'http://localhost',
-    'http://127.0.0.1',
-  ]
-}));
+app.use(cors());
 app.use(express.json());
 
 // ── CACHE STATE ───────────────────────────────────────────
